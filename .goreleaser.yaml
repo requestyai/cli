@@ -1,0 +1,45 @@
+version: 2
+
+project_name: requesty
+
+before:
+  hooks:
+    - go test ./...
+
+builds:
+  - id: requesty
+    main: .
+    binary: requesty
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: default
+    builds:
+      - requesty
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+
+release:
+  github:
+    owner: requestyai
+    name: cli
