@@ -104,7 +104,7 @@ func (m Model) View(width, height int) string {
 	if m.err != nil {
 		lines = append(lines, wrap.Render(theme.Bad.Render(m.err.Error())), "")
 	}
-	lines = append(lines, text.RenderFooterHintList([2]string{"enter", "continue"}, [2]string{"ctrl+c", "quit"}))
+	lines = append(lines, text.RenderFooterHintList(inner, [2]string{"enter", "continue"}, [2]string{"ctrl+c", "quit"}))
 
 	body := theme.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 

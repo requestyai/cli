@@ -5,6 +5,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/requestyai/cli/internal/tui/theme"
+	"github.com/requestyai/cli/internal/version"
 )
 
 const LineSeparator = ""
@@ -25,12 +26,17 @@ func RenderSplitLine(left, right string, width int) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// RenderFooterHintList renders a footer hint list: "↑/↓ select · q quit".
-func RenderFooterHintList(pairs ...[2]string) string {
+// RenderFooterHintList renders a footer hint list: "↑/↓ select · q quit"
+// with a version number on the right.
+func RenderFooterHintList(width int, pairs ...[2]string) string {
 	out := make([]string, 0, len(pairs))
 	for _, p := range pairs {
 		out = append(out, theme.Key.Render(p[0])+" "+theme.Footer.Render(p[1]))
 	}
 
-	return strings.Join(out, theme.Footer.Render(" · "))
+	return RenderSplitLine(
+		strings.Join(out, theme.Footer.Render(" · ")),
+		theme.Footer.Render(version.Version),
+		width,
+	)
 }
