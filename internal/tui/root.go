@@ -3,7 +3,6 @@ package tui
 import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
 	"github.com/requestyai/cli/internal/tui/pages/onboarding/apikey"
 )
@@ -38,7 +37,7 @@ func NewRoot(cfg config.Config) Root {
 	}
 
 	if cfg.APIKey != "" {
-		root.active = NewRequestyApp(client.New(cfg))
+		root.active = NewRequestyApp(cfg)
 	}
 
 	return root
@@ -62,7 +61,7 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case apikey.DoneMsg:
-		r.active = NewRequestyApp(client.New(msg.Config))
+		r.active = NewRequestyApp(msg.Config)
 		r.active, _ = r.active.Update(tea.WindowSizeMsg{
 			Width:  r.width,
 			Height: r.height,
