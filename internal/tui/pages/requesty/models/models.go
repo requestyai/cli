@@ -17,7 +17,7 @@ import (
 
 // chrome is the number of lines the page spends on everything that is not a
 // table row: heading, two spacers, column titles, rule and footer.
-const chrome = 6
+const chrome = 7
 
 // loadedMsg carries the catalogue back from the API.
 type loadedMsg struct {
@@ -90,7 +90,7 @@ func (m Model) View(width, height int) string {
 		text.LineSeparator,
 		t.Render(),
 		text.LineSeparator,
-		text.RenderFooterHintList([2]string{"↑/↓", "select"}, [2]string{"tab", "switch"}, [2]string{"q", "quit"}),
+		text.RenderFooterHintList(t.Width(), [2]string{"↑/↓", "select"}, [2]string{"tab", "switch"}, [2]string{"q", "quit"}),
 	)
 }
 

@@ -58,9 +58,10 @@ func TestSection(t *testing.T) {
 
 func TestKeys(t *testing.T) {
 	keys := RenderFooterHintList(
+		30,
 		[2]string{"↑/↓", "select"},
 		[2]string{"q", "quit"},
 	)
 
-	assert.Equal(t, "↑/↓ select · q quit", ansi.Strip(keys))
+	assert.Equal(t, "↑/↓ select · q quit        dev", ansi.Strip(keys))
 }
