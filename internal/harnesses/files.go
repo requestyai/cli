@@ -1,11 +1,48 @@
 package harnesses
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/pelletier/go-toml/v2"
 )
+
+func backupAndWriteConfigFileAsJSON(path string, data any) error {
+	if err := backupFile(path); err != nil {
+		return fmt.Errorf("failed to backup file: %w", err)
+	}
+
+	dataBytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal: %w", err)
+	}
+
+	if err := writeFile(path, dataBytes, 0o600); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
+
+func backupAndWriteConfigFileAsTOML(path string, data any) error {
+	if err := backupFile(path); err != nil {
+		return fmt.Errorf("failed to backup file: %w", err)
+	}
+
+	dataBytes, err := toml.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal: %w", err)
+	}
+
+	if err := writeFile(path, dataBytes, 0o600); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	return nil
+}
 
 func writeFile(path string, data []byte, perm fs.FileMode) (err error) {
 	dir := filepath.Dir(path)
