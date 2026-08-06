@@ -34,8 +34,8 @@ type Model struct {
 	err    error
 }
 
-func New(c *client.Client) Model {
-	return Model{client: c}
+func New(client *client.Client) Model {
+	return Model{client: client}
 }
 
 func (m Model) Init() tea.Cmd {
