@@ -24,7 +24,7 @@ archives:
   - id: default
     builds:
       - requesty
-    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     formats:
       - tar.gz
     format_overrides:
