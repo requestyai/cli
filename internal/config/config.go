@@ -13,7 +13,7 @@ const (
 	dirName  = ".requesty"
 	fileName = "config.json"
 
-	DefaultBaseURL = "https://router.requesty.ai/v1"
+	DefaultBaseURL = "https://router.requesty.ai"
 )
 
 // Config is the settings file.

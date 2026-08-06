@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/requestyai/cli/internal/config"
 )
 
 type claudeSettings struct {
@@ -17,10 +19,14 @@ type claudeSettings struct {
 	} `json:"env"`
 }
 
-type ClaudeHarness struct{}
+type ClaudeHarness struct {
+	config config.Config
+}
 
-func NewClaudeHarness() *ClaudeHarness {
-	return &ClaudeHarness{}
+func NewClaudeHarness(config config.Config) *ClaudeHarness {
+	return &ClaudeHarness{
+		config: config,
+	}
 }
 
 func (c *ClaudeHarness) Name() string {
@@ -71,7 +77,7 @@ func (c *ClaudeHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
-	if settings.Env.AnthropicBaseURL == "https://router.requesty.ai" {
+	if settings.Env.AnthropicBaseURL == c.config.BaseURL {
 		status.Configured = true
 	} else {
 		status.Configured = false
@@ -91,8 +97,8 @@ func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
 	}
 
 	settings := claudeSettings{}
-	settings.Env.AnthropicBaseURL = "https://router.requesty.ai"
-	settings.Env.AnthropicAuthToken = opts.APIKey
+	settings.Env.AnthropicBaseURL = c.config.BaseURL
+	settings.Env.AnthropicAuthToken = c.config.APIKey
 	settings.Env.AnthropicModel = opts.Model
 
 	settingsBytes, err := json.MarshalIndent(settings, "", "  ")
