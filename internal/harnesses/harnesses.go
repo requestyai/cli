@@ -1,5 +1,7 @@
 package harnesses
 
+import "github.com/requestyai/cli/internal/config"
+
 type Status struct {
 	Files      []string
 	Executable bool
@@ -7,8 +9,7 @@ type Status struct {
 }
 
 type ConfigureOptions struct {
-	APIKey string
-	Model  string
+	Model string
 }
 
 type Harness interface {
@@ -18,9 +19,9 @@ type Harness interface {
 	Configure(ConfigureOptions) error
 }
 
-func Harnesses() []Harness {
+func Harnesses(config config.Config) []Harness {
 	return []Harness{
-		NewClaudeHarness(),
-		NewCodexHarness(),
+		NewClaudeHarness(config),
+		NewCodexHarness(config),
 	}
 }

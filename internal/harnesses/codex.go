@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/requestyai/cli/internal/config"
 )
 
 const (
@@ -42,10 +43,14 @@ type codexAuth struct {
 	OpenAIAPIKey string `json:"OPENAI_API_KEY"`
 }
 
-type CodexHarness struct{}
+type CodexHarness struct {
+	config config.Config
+}
 
-func NewCodexHarness() *CodexHarness {
-	return &CodexHarness{}
+func NewCodexHarness(config config.Config) *CodexHarness {
+	return &CodexHarness{
+		config: config,
+	}
 }
 
 func (c *CodexHarness) Name() string {
@@ -101,6 +106,7 @@ func (c *CodexHarness) Status() (Status, error) {
 	} else if err != nil {
 		return status, fmt.Errorf("failed to read file: %w", err)
 	}
+
 	var config codexConfig
 	if err := toml.Unmarshal(configBytes, &config); err != nil {
 		return status, fmt.Errorf("failed to unmarshal: %w", err)
@@ -136,7 +142,7 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 		ModelProviders: map[string]codexProvider{
 			codexModelProvider: {
 				Name:    "Requesty",
-				BaseURL: "https://router.requesty.ai/v1",
+				BaseURL: fmt.Sprintf("%s/v1", c.config.BaseURL),
 				HTTPHeaders: map[string]string{
 					"X-Title": "OpenAI Codex",
 				},
@@ -173,7 +179,7 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 
 	auth := codexAuth{
 		AuthMode:     "apikey",
-		OpenAIAPIKey: opts.APIKey,
+		OpenAIAPIKey: c.config.APIKey,
 	}
 
 	authBytes, err := json.MarshalIndent(auth, "", "  ")

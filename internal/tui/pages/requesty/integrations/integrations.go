@@ -79,7 +79,7 @@ func (m Model) ModalOpen() bool {
 }
 
 func (m Model) load() tea.Msg {
-	registered := harnesses.Harnesses()
+	registered := harnesses.Harnesses(m.config)
 	items := make([]item, 0, len(registered))
 	for _, harness := range registered {
 		status, err := harness.Status()
@@ -116,8 +116,7 @@ func (m Model) loadModels() tea.Msg {
 func (m Model) configure(harness harnesses.Harness, model string) tea.Cmd {
 	return func() tea.Msg {
 		err := harness.Configure(harnesses.ConfigureOptions{
-			APIKey: m.config.APIKey,
-			Model:  model,
+			Model: model,
 		})
 
 		return configuredMsg{err: err}

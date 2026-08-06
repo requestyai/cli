@@ -4,12 +4,18 @@ import (
 	"os"
 	"testing"
 
+	"github.com/requestyai/cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestCodexIntegrationRoundTrip(t *testing.T) {
-	harness := NewCodexHarness()
+	config := config.Config{
+		BaseURL: "https://router.requesty.ai",
+		APIKey:  "my-api-key",
+	}
+
+	harness := NewCodexHarness(config)
 
 	// Validate not integrated on the github runner.
 	homePath, err := os.UserHomeDir()
@@ -23,8 +29,7 @@ func TestCodexIntegrationRoundTrip(t *testing.T) {
 
 	// Configure the machine.
 	err = harness.Configure(ConfigureOptions{
-		APIKey: "my-api-key",
-		Model:  "openai-responses/gpt-5.5",
+		Model: "openai-responses/gpt-5.5",
 	})
 	require.NoError(t, err)
 
