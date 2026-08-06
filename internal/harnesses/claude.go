@@ -49,7 +49,7 @@ func (c *ClaudeHarness) Status() (Status, error) {
 	}
 	status.Files = append(status.Files, settingsPath)
 
-	settingsExists, err := fileExists(settingsPath)
+	settingsExists, err := pathExists(settingsPath)
 	if err != nil {
 		return status, fmt.Errorf("failed to check file exists: %w", err)
 	}

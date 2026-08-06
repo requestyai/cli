@@ -43,7 +43,7 @@ func writeFile(path string, data []byte, perm fs.FileMode) (err error) {
 func backupFile(path string) error {
 	backupPath := path + ".requesty.bak"
 
-	exists, err := fileExists(backupPath)
+	exists, err := pathExists(backupPath)
 	if err != nil {
 		return fmt.Errorf("failed to check backup exists: %w", err)
 	}
@@ -51,7 +51,7 @@ func backupFile(path string) error {
 		return nil
 	}
 
-	srcExists, err := fileExists(path)
+	srcExists, err := pathExists(path)
 	if err != nil {
 		return fmt.Errorf("failed to check source exists: %w", err)
 	}
@@ -76,7 +76,7 @@ func backupFile(path string) error {
 	return nil
 }
 
-func fileExists(path string) (bool, error) {
+func pathExists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	switch {
 	case err == nil:
