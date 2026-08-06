@@ -11,6 +11,10 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
+const (
+	codexModelProvider = "requesty"
+)
+
 type codexConfig struct {
 	Model                           string `toml:"model"`
 	ModelProvider                   string `toml:"model_provider"`
@@ -76,12 +80,12 @@ func (c *CodexHarness) Status() (Status, error) {
 	}
 	status.Files = append(status.Files, authPath)
 
-	configExists, err := fileExists(configPath)
+	configExists, err := pathExists(configPath)
 	if err != nil {
 		return status, fmt.Errorf("failed to check file exists: %w", err)
 	}
 
-	authExists, err := fileExists(authPath)
+	authExists, err := pathExists(authPath)
 	if err != nil {
 		return status, fmt.Errorf("failed to check file exists: %w", err)
 	}
@@ -102,7 +106,7 @@ func (c *CodexHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
-	if config.ModelProvider == "requesty" {
+	if config.ModelProvider == codexModelProvider {
 		status.Configured = true
 	} else {
 		status.Configured = false
@@ -128,9 +132,9 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 
 	config := codexConfig{
 		Model:         opts.Model,
-		ModelProvider: "requesty",
+		ModelProvider: codexModelProvider,
 		ModelProviders: map[string]codexProvider{
-			"requesty": {
+			codexModelProvider: {
 				Name:    "Requesty",
 				BaseURL: "https://router.requesty.ai/v1",
 				HTTPHeaders: map[string]string{
