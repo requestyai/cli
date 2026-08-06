@@ -87,27 +87,18 @@ func (c *ClaudeHarness) Status() (Status, error) {
 }
 
 func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
-	settingsPath, err := c.settingsPath()
-	if err != nil {
-		return fmt.Errorf("failed to get settings path: %w", err)
-	}
-
-	if err := backupFile(settingsPath); err != nil {
-		return fmt.Errorf("failed to backup file: %w", err)
-	}
-
 	settings := claudeSettings{}
 	settings.Env.AnthropicBaseURL = c.config.BaseURL
 	settings.Env.AnthropicAuthToken = c.config.APIKey
 	settings.Env.AnthropicModel = opts.Model
 
-	settingsBytes, err := json.MarshalIndent(settings, "", "  ")
+	settingsPath, err := c.settingsPath()
 	if err != nil {
-		return fmt.Errorf("failed to marshal: %w", err)
+		return fmt.Errorf("failed to get settings path: %w", err)
 	}
 
-	if err := writeFile(settingsPath, settingsBytes, 0o600); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+	if err := backupAndWriteConfigFileAsJSON(settingsPath, &settings); err != nil {
+		return fmt.Errorf("failed to write settings file: %w", err)
 	}
 
 	return nil

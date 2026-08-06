@@ -1,7 +1,6 @@
 package harnesses
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -122,15 +121,6 @@ func (c *CodexHarness) Status() (Status, error) {
 }
 
 func (c *CodexHarness) Configure(opts ConfigureOptions) error {
-	configPath, err := c.configPath()
-	if err != nil {
-		return fmt.Errorf("failed to get config path: %w", err)
-	}
-
-	if err := backupFile(configPath); err != nil {
-		return fmt.Errorf("failed to backup file: %w", err)
-	}
-
 	homePath, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home path: %w", err)
@@ -159,22 +149,13 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 		},
 	}
 
-	configBytes, err := toml.Marshal(config)
+	configPath, err := c.configPath()
 	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+		return fmt.Errorf("failed to get config path: %w", err)
 	}
 
-	if err := writeFile(configPath, configBytes, 0o600); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	authPath, err := c.authPath()
-	if err != nil {
-		return fmt.Errorf("failed to get auth path: %w", err)
-	}
-
-	if err := backupFile(authPath); err != nil {
-		return fmt.Errorf("failed to backup file: %w", err)
+	if err := backupAndWriteConfigFileAsTOML(configPath, &config); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
 	auth := codexAuth{
@@ -182,13 +163,13 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 		OpenAIAPIKey: c.config.APIKey,
 	}
 
-	authBytes, err := json.MarshalIndent(auth, "", "  ")
+	authPath, err := c.authPath()
 	if err != nil {
-		return fmt.Errorf("failed to marshal: %w", err)
+		return fmt.Errorf("failed to get auth path: %w", err)
 	}
 
-	if err := writeFile(authPath, authBytes, 0o600); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+	if err := backupAndWriteConfigFileAsJSON(authPath, &auth); err != nil {
+		return fmt.Errorf("failed to write auth file: %w", err)
 	}
 
 	return nil
