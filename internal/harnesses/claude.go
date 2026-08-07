@@ -87,6 +87,38 @@ func (c *ClaudeHarness) Status() (Status, error) {
 }
 
 func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
+	if opts.Overwrite {
+		return c.configureOverwrite(opts)
+	}
+
+	return c.configureMerge(opts)
+}
+
+func (c *ClaudeHarness) configureMerge(opts ConfigureOptions) error {
+	settingsPath, err := c.settingsPath()
+	if err != nil {
+		return fmt.Errorf("failed to get settings path: %w", err)
+	}
+
+	settings, err := mergeJSONConfigFile(settingsPath, map[string]any{
+		"env": map[string]any{
+			"ANTHROPIC_BASE_URL":   c.config.RouterBaseURL,
+			"ANTHROPIC_AUTH_TOKEN": c.config.APIKey,
+			"ANTHROPIC_MODEL":      opts.Model,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to merge settings file: %w", err)
+	}
+
+	if err := backupAndWriteConfigFileAsJSON(settingsPath, &settings); err != nil {
+		return fmt.Errorf("failed to write settings file: %w", err)
+	}
+
+	return nil
+}
+
+func (c *ClaudeHarness) configureOverwrite(opts ConfigureOptions) error {
 	settings := claudeSettings{}
 	settings.Env.AnthropicBaseURL = c.config.RouterBaseURL
 	settings.Env.AnthropicAuthToken = c.config.APIKey

@@ -22,6 +22,36 @@ const (
 	statusWidth = 10
 )
 
+type integrationWizardStep uint8
+
+const (
+	integrationModelWizardStep integrationWizardStep = iota
+	integrationModeWizardStep
+)
+
+// integrationWizardState tracks progress and selections in the configuration wizard.
+type integrationWizardState struct {
+	open bool
+	step integrationWizardStep
+
+	options     harnesses.ConfigureOptions
+	models      []client.Model
+	modelCursor int
+	modeCursor  int
+
+	modelsErr    error
+	configureErr error
+	configuring  bool
+}
+
+// integrationWizardPage contains the content and controls rendered for one wizard step.
+type integrationWizardPage struct {
+	title      string
+	body       string
+	enterHint  string
+	escapeHint string
+}
+
 // integrationItem pairs a registered harness with its latest detected status.
 type integrationItem struct {
 	harness harnesses.Harness
@@ -34,7 +64,7 @@ type integrationsLoadedMsg struct {
 	items []integrationItem
 }
 
-// integrationModelsLoadedMsg carries the model catalogue back to the picker.
+// integrationModelsLoadedMsg carries the model catalogue back to the wizard.
 type integrationModelsLoadedMsg struct {
 	models []client.Model
 	err    error
@@ -45,7 +75,7 @@ type integrationConfiguredMsg struct {
 	err error
 }
 
-// integrationState holds the integrations list and model picker state.
+// integrationState holds the integrations list and configuration wizard state.
 type integrationState struct {
 	client *client.Client
 	config config.Config
@@ -54,12 +84,7 @@ type integrationState struct {
 	cursor     int
 	refreshing bool
 
-	pickerOpen   bool
-	models       []client.Model
-	modelCursor  int
-	modelsErr    error
-	configureErr error
-	configuring  bool
+	wizard integrationWizardState
 }
 
 func newIntegrationState(client *client.Client, config config.Config) integrationState {
@@ -110,9 +135,9 @@ func (m integrationState) loadModels() tea.Msg {
 	return integrationModelsLoadedMsg{models: models, err: err}
 }
 
-func (m integrationState) configure(harness harnesses.Harness, model string) tea.Cmd {
+func (m integrationState) configure(harness harnesses.Harness, options harnesses.ConfigureOptions) tea.Cmd {
 	return func() tea.Msg {
-		err := harness.Configure(harnesses.ConfigureOptions{Model: model})
+		err := harness.Configure(options)
 		return integrationConfiguredMsg{err: err}
 	}
 }
@@ -135,25 +160,22 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 		}
 
 	case integrationModelsLoadedMsg:
-		m.models, m.modelsErr = typedMsg.models, typedMsg.err
-		m.modelCursor = 0
+		m.wizard.models, m.wizard.modelsErr = typedMsg.models, typedMsg.err
+		m.wizard.modelCursor = 0
 
 	case integrationConfiguredMsg:
-		m.configuring = false
+		m.wizard.configuring = false
 		if typedMsg.err != nil {
-			m.configureErr = fmt.Errorf("could not configure harness: %w", typedMsg.err)
+			m.wizard.configureErr = fmt.Errorf("could not configure harness: %w", typedMsg.err)
 			return m, nil
 		}
-		m.pickerOpen = false
-		m.models = nil
-		m.modelsErr = nil
-		m.configureErr = nil
+		m.wizard = integrationWizardState{}
 		m.refreshing = true
 		return m, m.load
 
 	case tea.KeyPressMsg:
-		if m.pickerOpen {
-			return m.updatePicker(typedMsg)
+		if m.wizard.open {
+			return m.updateWizard(typedMsg)
 		}
 		switch typedMsg.String() {
 		case "up", "k":
@@ -166,11 +188,7 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 			}
 		case " ", "space":
 			if m.canConfigure() {
-				m.pickerOpen = true
-				m.models = nil
-				m.modelsErr = nil
-				m.configureErr = nil
-				m.modelCursor = 0
+				m.wizard = integrationWizardState{open: true}
 				return m, m.loadModels
 			}
 		}
@@ -179,30 +197,68 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 	return m, nil
 }
 
-func (m integrationState) updatePicker(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
-	if m.configuring {
+func (m integrationState) updateWizard(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
+	if m.wizard.configuring {
 		return m, nil
 	}
 
+	switch m.wizard.step {
+	case integrationModelWizardStep:
+		return m.updateModelStep(msg)
+	case integrationModeWizardStep:
+		return m.updateModeStep(msg)
+	default:
+		return m, nil
+	}
+}
+
+func (m integrationState) updateModelStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
-		m.pickerOpen = false
-		m.models = nil
-		m.modelsErr = nil
-		m.configureErr = nil
+		m.wizard = integrationWizardState{}
 	case "up", "k":
-		if m.modelCursor > 0 {
-			m.modelCursor--
+		if m.wizard.modelCursor > 0 {
+			m.wizard.modelCursor--
 		}
 	case "down", "j":
-		if m.modelCursor < len(m.models)-1 {
-			m.modelCursor++
+		if m.wizard.modelCursor < len(m.wizard.models)-1 {
+			m.wizard.modelCursor++
 		}
 	case "enter":
-		if m.modelsErr == nil && len(m.models) > 0 && m.cursor < len(m.items) {
-			m.configuring = true
-			m.configureErr = nil
-			return m, m.configure(m.items[m.cursor].harness, m.models[m.modelCursor].ID)
+		if m.wizard.modelsErr == nil &&
+			len(m.wizard.models) > 0 &&
+			m.cursor < len(m.items) {
+			m.wizard.options.Model = m.wizard.models[m.wizard.modelCursor].ID
+			m.wizard.step = integrationModeWizardStep
+			m.wizard.modeCursor = 0
+			m.wizard.configureErr = nil
+		}
+	}
+
+	return m, nil
+}
+
+func (m integrationState) updateModeStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.wizard.step = integrationModelWizardStep
+		m.wizard.options.Model = ""
+		m.wizard.modeCursor = 0
+		m.wizard.configureErr = nil
+	case "up", "k":
+		if m.wizard.modeCursor > 0 {
+			m.wizard.modeCursor--
+		}
+	case "down", "j":
+		if m.wizard.modeCursor < 1 {
+			m.wizard.modeCursor++
+		}
+	case "enter":
+		if m.wizard.options.Model != "" && m.cursor < len(m.items) {
+			m.wizard.options.Overwrite = m.wizard.modeCursor == 1
+			m.wizard.configuring = true
+			m.wizard.configureErr = nil
+			return m, m.configure(m.items[m.cursor].harness, m.wizard.options)
 		}
 	}
 
@@ -339,46 +395,25 @@ func (m integrationState) detail(width int) string {
 	return theme.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
-func (m integrationState) pickerView(width, height int) string {
+func (m integrationState) wizardView(width, height int) string {
 	inner := max(min(width-8, 80), 24)
+	page := m.wizardPage(inner, height)
+	if m.wizard.configuring {
+		page.body = theme.Muted.Render("Configuring harness…")
+	}
+
 	lines := []string{
 		text.RenderSplitHeaderSection(
-			"Choose a Requesty model",
+			page.title,
 			m.items[m.cursor].harness.Name(),
 			inner,
 		),
 		text.LineSeparator,
+		page.body,
 	}
 
-	switch {
-	case m.configuring:
-		lines = append(lines, theme.Muted.Render("Configuring harness…"))
-	case m.modelsErr != nil:
-		lines = append(lines, theme.Bad.Render(m.modelsErr.Error()))
-	case m.models == nil:
-		lines = append(lines, theme.Muted.Render("Loading models…"))
-	case len(m.models) == 0:
-		lines = append(lines, theme.Muted.Render("No models available"))
-	default:
-		rows := make([][]string, 0, len(m.models))
-		for _, model := range m.models {
-			rows = append(rows, []string{model.ID})
-		}
-
-		t := table.Table{
-			Cols: []table.Column{
-				{Title: "MODEL", Width: inner - 2, Align: table.Left},
-			},
-			Rows:   rows,
-			Cursor: m.modelCursor,
-			Height: max(height-10, 3),
-			Style:  table.CellStyle(m.modelCursor),
-		}
-
-		lines = append(lines, t.Render())
-	}
-	if m.configureErr != nil {
-		lines = append(lines, text.LineSeparator, theme.Bad.Render(m.configureErr.Error()))
+	if m.wizard.configureErr != nil {
+		lines = append(lines, text.LineSeparator, theme.Bad.Render(m.wizard.configureErr.Error()))
 	}
 
 	lines = append(lines,
@@ -386,11 +421,82 @@ func (m integrationState) pickerView(width, height int) string {
 		text.RenderFooterHintList(
 			inner,
 			[2]string{"↑/↓", "move"},
-			[2]string{"enter", "configure"},
-			[2]string{"esc", "cancel"},
+			[2]string{"enter", page.enterHint},
+			[2]string{"esc", page.escapeHint},
 		),
 	)
 
 	body := theme.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
+}
+
+func (m integrationState) wizardPage(inner, height int) integrationWizardPage {
+	switch m.wizard.step {
+	case integrationModelWizardStep:
+		return m.modelStepPage(inner, height)
+	case integrationModeWizardStep:
+		return m.modeStepPage(inner)
+	default:
+		return integrationWizardPage{}
+	}
+}
+
+func (m integrationState) modelStepPage(inner, height int) integrationWizardPage {
+	page := integrationWizardPage{
+		title:      "Choose a Requesty model",
+		enterHint:  "continue",
+		escapeHint: "cancel",
+	}
+
+	switch {
+	case m.wizard.modelsErr != nil:
+		page.body = theme.Bad.Render(m.wizard.modelsErr.Error())
+	case m.wizard.models == nil:
+		page.body = theme.Muted.Render("Loading models…")
+	case len(m.wizard.models) == 0:
+		page.body = theme.Muted.Render("No models available")
+	default:
+		rows := make([][]string, 0, len(m.wizard.models))
+		for _, model := range m.wizard.models {
+			rows = append(rows, []string{model.ID})
+		}
+		page.body = table.Table{
+			Cols: []table.Column{
+				{Title: "MODEL", Width: inner - 2, Align: table.Left},
+			},
+			Rows:   rows,
+			Cursor: m.wizard.modelCursor,
+			Height: max(height-10, 3),
+			Style:  table.CellStyle(m.wizard.modelCursor),
+		}.Render()
+	}
+
+	return page
+}
+
+func (m integrationState) modeStepPage(inner int) integrationWizardPage {
+	body := table.Table{
+		Cols: []table.Column{
+			{Title: "CONFIGURATION", Width: inner - 2, Align: table.Left},
+		},
+		Rows: [][]string{
+			{"Merge existing config files (recommended)"},
+			{"Overwrite config files"},
+		},
+		Cursor: m.wizard.modeCursor,
+		Height: 2,
+		Style:  table.CellStyle(m.wizard.modeCursor),
+	}.Render()
+
+	description := "Preserve existing settings and update Requesty values."
+	if m.wizard.modeCursor == 1 {
+		description = "Replace existing config files with Requesty settings."
+	}
+
+	return integrationWizardPage{
+		title:      "Choose how to configure the harness",
+		body:       lipgloss.JoinVertical(lipgloss.Left, body, text.LineSeparator, theme.Muted.Render(description)),
+		enterHint:  "configure",
+		escapeHint: "back",
+	}
 }
