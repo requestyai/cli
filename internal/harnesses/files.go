@@ -8,36 +8,42 @@ import (
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
+	"gopkg.in/yaml.v3"
 )
 
 func backupAndWriteConfigFileAsJSON(path string, data any) error {
-	if err := backupFile(path); err != nil {
-		return fmt.Errorf("failed to backup file: %w", err)
-	}
-
 	dataBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
-	if err := writeFile(path, dataBytes, 0o600); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	return nil
+	return backupAndWriteFile(path, dataBytes)
 }
 
 func backupAndWriteConfigFileAsTOML(path string, data any) error {
-	if err := backupFile(path); err != nil {
-		return fmt.Errorf("failed to backup file: %w", err)
-	}
-
 	dataBytes, err := toml.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
-	if err := writeFile(path, dataBytes, 0o600); err != nil {
+	return backupAndWriteFile(path, dataBytes)
+}
+
+func backupAndWriteConfigFileAsYAML(path string, data any) error {
+	dataBytes, err := yaml.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal: %w", err)
+	}
+
+	return backupAndWriteFile(path, dataBytes)
+}
+
+func backupAndWriteFile(path string, data []byte) error {
+	if err := backupFile(path); err != nil {
+		return fmt.Errorf("failed to backup file: %w", err)
+	}
+
+	if err := writeFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 

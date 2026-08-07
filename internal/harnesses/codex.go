@@ -42,6 +42,11 @@ type CodexHarness struct {
 	configDir string
 }
 
+// DefaultConfigDirCodex is where Codex keeps its configuration.
+func DefaultConfigDirCodex() (string, error) {
+	return configDirInHome(".codex")
+}
+
 func NewCodexHarness(config config.Config, configDir string) *CodexHarness {
 	return &CodexHarness{
 		config:    config,

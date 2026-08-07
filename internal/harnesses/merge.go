@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/pelletier/go-toml/v2"
+	"gopkg.in/yaml.v3"
 )
 
 func mergeJSONConfigFile(path string, patch map[string]any) (map[string]any, error) {
@@ -41,6 +42,24 @@ func mergeTOMLConfigFile(path string, patch map[string]any) (map[string]any, err
 
 	data := make(map[string]any)
 	if err := toml.Unmarshal(dataBytes, &data); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal: %w", err)
+	}
+
+	if err := mergePatch(data, patch, ""); err != nil {
+		return nil, fmt.Errorf("failed to merge: %w", err)
+	}
+
+	return data, nil
+}
+
+func mergeYAMLConfigFile(path string, patch map[string]any) (map[string]any, error) {
+	dataBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	data := make(map[string]any)
+	if err := yaml.Unmarshal(dataBytes, &data); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 

@@ -2,15 +2,8 @@ package harnesses
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/requestyai/cli/internal/config"
-)
-
-const (
-	claudeCodeConfigDirName = ".claude"
-	codexConfigDirName      = ".codex"
 )
 
 type Status struct {
@@ -42,27 +35,26 @@ func Harnesses(config config.Config) ([]Harness, error) {
 		return nil, fmt.Errorf("failed to get Codex config directory: %w", err)
 	}
 
+	openCodeConfigDir, err := DefaultConfigDirOpenCode()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get OpenCode config directory: %w", err)
+	}
+
+	piConfigDir, err := DefaultConfigDirPi()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Pi config directory: %w", err)
+	}
+
+	hermesConfigDir, err := DefaultConfigDirHermes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Hermes config directory: %w", err)
+	}
+
 	return []Harness{
 		NewClaudeHarness(config, claudeCodeConfigDir),
 		NewCodexHarness(config, codexConfigDir),
+		NewOpenCodeHarness(config, openCodeConfigDir),
+		NewPiHarness(config, piConfigDir),
+		NewHermesHarness(config, hermesConfigDir),
 	}, nil
-}
-
-// DefaultConfigDirClaudeCode is where Claude Code keeps its configuration.
-func DefaultConfigDirClaudeCode() (string, error) {
-	return configDirInHome(claudeCodeConfigDirName)
-}
-
-// DefaultConfigDirCodex is where Codex keeps its configuration.
-func DefaultConfigDirCodex() (string, error) {
-	return configDirInHome(codexConfigDirName)
-}
-
-func configDirInHome(name string) (string, error) {
-	homePath, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home path: %w", err)
-	}
-
-	return filepath.Join(homePath, name), nil
 }
