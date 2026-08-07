@@ -24,6 +24,11 @@ type ClaudeHarness struct {
 	configDir string
 }
 
+// DefaultConfigDirClaudeCode is where Claude Code keeps its configuration.
+func DefaultConfigDirClaudeCode() (string, error) {
+	return configDirInHome(".claude")
+}
+
 func NewClaudeHarness(config config.Config, configDir string) *ClaudeHarness {
 	return &ClaudeHarness{
 		config:    config,
