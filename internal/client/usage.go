@@ -1,0 +1,69 @@
+package client
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/shopspring/decimal"
+)
+
+type UsageEntry struct {
+	TotalRequests int             `json:"total_requests"`
+	TotalTokens   int             `json:"total_tokens"`
+	Spend         decimal.Decimal `json:"spend"`
+}
+
+type UsageInput struct {
+	Start      time.Time
+	End        time.Time
+	Resolution string
+}
+
+// Usage returns the organization's usage for the requested period.
+// If End or Resolution is unset, the API's defaults are used.
+func (c *Client) Usage(ctx context.Context, input UsageInput) (map[string]UsageEntry, error) {
+	endpoint, err := url.Parse(fmt.Sprintf("%s/v1/manage/apikey/self/usage", c.config.APIBaseURL))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse url: %w", err)
+	}
+
+	query := endpoint.Query()
+	query.Set("start", input.Start.Format(time.RFC3339))
+	if !input.End.IsZero() {
+		query.Set("end", input.End.Format(time.RFC3339))
+	}
+	if input.Resolution != "" {
+		query.Set("resolution", input.Resolution)
+	}
+	endpoint.RawQuery = query.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	c.authorize(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status code not ok: %d", resp.StatusCode)
+	}
+
+	var response struct {
+		Usage map[string]UsageEntry `json:"usage"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return response.Usage, nil
+}

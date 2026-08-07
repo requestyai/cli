@@ -3,6 +3,7 @@ package util
 import (
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -39,4 +40,11 @@ func TestFormatPrice(t *testing.T) {
 func TestFormatCachePrice(t *testing.T) {
 	assert.Equal(t, "-", FormatCachePrice(0))
 	assert.Equal(t, "$5.00", FormatCachePrice(0.000005))
+}
+
+func TestDashboardFormats(t *testing.T) {
+	assert.Equal(t, "$12.35", FormatSpend(decimal.RequireFromString("12.345")))
+	assert.Equal(t, "999", FormatCount(999))
+	assert.Equal(t, "1.2K", FormatCount(1200))
+	assert.Equal(t, "2.5M", FormatCount(2_500_000))
 }

@@ -48,20 +48,23 @@ func (r Root) Init() tea.Cmd {
 }
 
 func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch typedMsg := msg.(type) {
 	case tea.WindowSizeMsg:
-		r.width = max(msg.Width-2*framePadX, 0)
-		r.height = max(msg.Height-2*framePadY, 0)
+		r.width = max(typedMsg.Width-2*framePadX, 0)
+		r.height = max(typedMsg.Height-2*framePadY, 0)
+
+		// Apps draw inside the frame, so they are sized to the content
+		// area rather than the terminal.
 		msg = tea.WindowSizeMsg{Width: r.width, Height: r.height}
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
+		switch typedMsg.String() {
 		case "ctrl+c":
 			return r, tea.Quit
 		}
 
 	case apikey.DoneMsg:
-		r.active = NewRequestyApp(msg.Config)
+		r.active = NewRequestyApp(typedMsg.Config)
 		r.active, _ = r.active.Update(tea.WindowSizeMsg{
 			Width:  r.width,
 			Height: r.height,

@@ -45,16 +45,6 @@ var (
 	// Rule is a full-width horizontal divider.
 	Rule = lipgloss.NewStyle().Foreground(Line)
 
-	TabOn = lipgloss.NewStyle().
-		Foreground(Bg).
-		Background(Blue).
-		Bold(true).
-		Padding(0, 1)
-
-	TabOff = lipgloss.NewStyle().
-		Foreground(Dim).
-		Padding(0, 1)
-
 	// Pill marks a selected choice in an inline switcher, such as the time
 	// window. PillOff is its unselected counterpart.
 	Pill = lipgloss.NewStyle().

@@ -25,9 +25,9 @@ func (a OnboardingApp) Init() tea.Cmd {
 }
 
 func (a OnboardingApp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch typedMsg := msg.(type) {
 	case tea.WindowSizeMsg:
-		a.width, a.height = msg.Width, msg.Height
+		a.width, a.height = typedMsg.Width, typedMsg.Height
 	}
 
 	var cmd tea.Cmd

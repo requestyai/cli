@@ -1,4 +1,4 @@
-package integrations
+package dashboard
 
 import (
 	"context"
@@ -22,36 +22,35 @@ const (
 	statusWidth = 10
 )
 
-// item pairs a registered harness with its latest detected status.
-type item struct {
+// integrationItem pairs a registered harness with its latest detected status.
+type integrationItem struct {
 	harness harnesses.Harness
 	status  harnesses.Status
 	err     error
 }
 
-// loadedMsg carries refreshed harness statuses back to the page.
-type loadedMsg struct {
-	items []item
+// integrationsLoadedMsg carries refreshed harness statuses back to the page.
+type integrationsLoadedMsg struct {
+	items []integrationItem
 }
 
-// modelsLoadedMsg carries the model catalogue back to the picker.
-type modelsLoadedMsg struct {
+// integrationModelsLoadedMsg carries the model catalogue back to the picker.
+type integrationModelsLoadedMsg struct {
 	models []client.Model
 	err    error
 }
 
-// configuredMsg carries the result of configuring the selected harness.
-type configuredMsg struct {
+// integrationConfiguredMsg carries the result of configuring the selected harness
+type integrationConfiguredMsg struct {
 	err error
 }
 
-// Model displays harness status and configures installed harnesses.
-// A dialog is launched to select a model on configuring a harness.
-type Model struct {
+// integrationState holds the integrations list and model picker state.
+type integrationState struct {
 	client *client.Client
 	config config.Config
 
-	items      []item
+	items      []integrationItem
 	cursor     int
 	refreshing bool
 
@@ -63,32 +62,23 @@ type Model struct {
 	configuring  bool
 }
 
-func New(client *client.Client, config config.Config) Model {
-	return Model{
-		client: client,
-		config: config,
-	}
+func newIntegrationState(client *client.Client, config config.Config) integrationState {
+	return integrationState{client: client, config: config}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m integrationState) init() tea.Cmd {
 	return m.load
 }
 
-func (m Model) ModalOpen() bool {
-	return m.pickerOpen
-}
-
-func (m Model) load() tea.Msg {
+func (m integrationState) load() tea.Msg {
 	registered := harnesses.Harnesses(m.config)
-	items := make([]item, 0, len(registered))
+	items := make([]integrationItem, 0, len(registered))
 	for _, harness := range registered {
 		status, err := harness.Status()
-		items = append(items, item{harness: harness, status: status, err: err})
+		items = append(items, integrationItem{harness: harness, status: status, err: err})
 	}
 
-	// Move undetected harnesses to the bottom
-	// of the table.
-	slices.SortStableFunc(items, func(a, b item) int {
+	slices.SortStableFunc(items, func(a, b integrationItem) int {
 		switch {
 		case a.status.Executable == b.status.Executable:
 			return 0
@@ -99,38 +89,42 @@ func (m Model) load() tea.Msg {
 		}
 	})
 
-	return loadedMsg{items: items}
+	return integrationsLoadedMsg{items: items}
 }
 
-func (m Model) loadModels() tea.Msg {
+func (m integrationState) refresh() tea.Cmd {
+	if m.refreshing {
+		return nil
+	}
+	m.refreshing = true
+	return m.load
+}
+
+func (m integrationState) loadModels() tea.Msg {
 	models, err := m.client.Models(context.Background())
 	if err == nil {
 		slices.SortFunc(models, func(a, b client.Model) int {
 			return strings.Compare(a.ID, b.ID)
 		})
 	}
-
-	return modelsLoadedMsg{models: models, err: err}
+	return integrationModelsLoadedMsg{models: models, err: err}
 }
 
-func (m Model) configure(harness harnesses.Harness, model string) tea.Cmd {
+func (m integrationState) configure(harness harnesses.Harness, model string) tea.Cmd {
 	return func() tea.Msg {
-		err := harness.Configure(harnesses.ConfigureOptions{
-			Model: model,
-		})
-
-		return configuredMsg{err: err}
+		err := harness.Configure(harnesses.ConfigureOptions{Model: model})
+		return integrationConfiguredMsg{err: err}
 	}
 }
 
-func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case loadedMsg:
+func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
+	switch typedMsg := msg.(type) {
+	case integrationsLoadedMsg:
 		selected := ""
 		if m.cursor >= 0 && m.cursor < len(m.items) {
 			selected = m.items[m.cursor].harness.Name()
 		}
-		m.items = msg.items
+		m.items = typedMsg.items
 		m.refreshing = false
 		m.cursor = 0
 		for i := range m.items {
@@ -140,14 +134,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 		}
 
-	case modelsLoadedMsg:
-		m.models, m.modelsErr = msg.models, msg.err
+	case integrationModelsLoadedMsg:
+		m.models, m.modelsErr = typedMsg.models, typedMsg.err
 		m.modelCursor = 0
 
-	case configuredMsg:
+	case integrationConfiguredMsg:
 		m.configuring = false
-		if msg.err != nil {
-			m.configureErr = fmt.Errorf("could not configure harness: %w", msg.err)
+		if typedMsg.err != nil {
+			m.configureErr = fmt.Errorf("could not configure harness: %w", typedMsg.err)
 			return m, nil
 		}
 		m.pickerOpen = false
@@ -159,10 +153,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		if m.pickerOpen {
-			return m.updatePicker(msg)
+			return m.updatePicker(typedMsg)
 		}
-
-		switch msg.String() {
+		switch typedMsg.String() {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -170,14 +163,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "down", "j":
 			if m.cursor < len(m.items)-1 {
 				m.cursor++
-			}
-		case "r":
-			if !m.refreshing {
-				m.refreshing = true
-				m.models = nil
-				m.modelsErr = nil
-				m.configureErr = nil
-				return m, m.load
 			}
 		case " ", "space":
 			if m.canConfigure() {
@@ -194,7 +179,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) updatePicker(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+func (m integrationState) updatePicker(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
 	if m.configuring {
 		return m, nil
 	}
@@ -224,7 +209,7 @@ func (m Model) updatePicker(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) canConfigure() bool {
+func (m integrationState) canConfigure() bool {
 	if m.refreshing || m.cursor < 0 || m.cursor >= len(m.items) {
 		return false
 	}
@@ -233,10 +218,7 @@ func (m Model) canConfigure() bool {
 	return selected.err == nil && selected.status.Executable
 }
 
-func (m Model) View(width, height int) string {
-	if m.pickerOpen {
-		return m.pickerView(width, height)
-	}
+func (m integrationState) view(width, height int) string {
 	if m.items == nil {
 		return theme.Muted.Render("Loading harnesses…")
 	}
@@ -265,13 +247,12 @@ func (m Model) View(width, height int) string {
 			[2]string{"↑/↓", "move"},
 			[2]string{"space", "configure"},
 			[2]string{"r", "refresh"},
-			[2]string{"tab", "switch"},
 			[2]string{"q/esc", "quit"},
 		),
 	)
 }
 
-func (m Model) table(width, rows int) table.Table {
+func (m integrationState) table(width, rows int) table.Table {
 	nameWidth := max(width-checkWidth-configWidth-statusWidth-2, 18)
 	body := make([][]string, 0, len(m.items))
 	for _, item := range m.items {
@@ -279,14 +260,17 @@ func (m Model) table(width, rows int) table.Table {
 		if item.status.Configured {
 			check = "[✓]"
 		}
+
 		config := ""
 		if len(item.status.Files) > 0 {
 			config = item.status.Files[0]
 		}
+
 		status := "inactive"
 		if item.status.Configured {
 			status = "active"
 		}
+
 		body = append(body, []string{check, item.harness.Name(), config, status})
 	}
 
@@ -304,7 +288,7 @@ func (m Model) table(width, rows int) table.Table {
 	}
 }
 
-func (m Model) cellStyle(row, col int) lipgloss.Style {
+func (m integrationState) cellStyle(row, col int) lipgloss.Style {
 	if row < 0 {
 		return theme.Label.Bold(true)
 	}
@@ -315,13 +299,14 @@ func (m Model) cellStyle(row, col int) lipgloss.Style {
 	} else if m.items[row].status.Configured && (col == 0 || col == 3) {
 		style = theme.Good
 	}
+
 	if row == m.cursor {
 		style = style.Background(theme.BgSelect)
 	}
 	return style
 }
 
-func (m Model) detail(width int) string {
+func (m integrationState) detail(width int) string {
 	if len(m.items) == 0 {
 		return theme.Panel.Render(theme.Muted.Render("No harnesses found"))
 	}
@@ -337,6 +322,7 @@ func (m Model) detail(width int) string {
 			inner,
 		),
 	}
+
 	for _, description := range selected.harness.Description() {
 		lines = append(lines, wrap.Render(theme.Body.Render(description)))
 	}
@@ -353,7 +339,7 @@ func (m Model) detail(width int) string {
 	return theme.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
 }
 
-func (m Model) pickerView(width, height int) string {
+func (m integrationState) pickerView(width, height int) string {
 	inner := max(min(width-8, 80), 24)
 	lines := []string{
 		text.RenderSplitHeaderSection(
@@ -378,6 +364,7 @@ func (m Model) pickerView(width, height int) string {
 		for _, model := range m.models {
 			rows = append(rows, []string{model.ID})
 		}
+
 		t := table.Table{
 			Cols: []table.Column{
 				{Title: "MODEL", Width: inner - 2, Align: table.Left},
@@ -387,6 +374,7 @@ func (m Model) pickerView(width, height int) string {
 			Height: max(height-10, 3),
 			Style:  table.CellStyle(m.modelCursor),
 		}
+
 		lines = append(lines, t.Render())
 	}
 	if m.configureErr != nil {
