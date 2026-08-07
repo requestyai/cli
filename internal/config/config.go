@@ -13,13 +13,13 @@ const (
 	dirName  = ".requesty"
 	fileName = "config.json"
 
-	DefaultBaseURL = "https://router.requesty.ai"
+	DefaultRouterBaseURL = "https://router.requesty.ai"
 )
 
 // Config is the settings file.
 type Config struct {
-	APIKey  string `json:"api_key"`
-	BaseURL string `json:"base_url"`
+	APIKey        string `json:"api_key"`
+	RouterBaseURL string `json:"router_base_url"`
 }
 
 // Load reads the settings. A missing file is not an error: it means the user

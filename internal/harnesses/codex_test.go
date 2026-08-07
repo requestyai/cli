@@ -11,8 +11,8 @@ import (
 
 func TestCodexIntegrationRoundTrip(t *testing.T) {
 	config := config.Config{
-		BaseURL: "https://router.requesty.ai",
-		APIKey:  "my-api-key",
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
 	}
 
 	harness := NewCodexHarness(config)

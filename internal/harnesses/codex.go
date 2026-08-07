@@ -132,7 +132,7 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 		ModelProviders: map[string]codexProvider{
 			codexModelProvider: {
 				Name:    "Requesty",
-				BaseURL: fmt.Sprintf("%s/v1", c.config.BaseURL),
+				BaseURL: fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
 				HTTPHeaders: map[string]string{
 					"X-Title": "OpenAI Codex",
 				},

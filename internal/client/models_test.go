@@ -10,7 +10,7 @@ import (
 )
 
 func TestClient_Models(t *testing.T) {
-	client := New(config.Config{BaseURL: config.DefaultBaseURL})
+	client := New(config.Config{RouterBaseURL: config.DefaultRouterBaseURL})
 
 	models, err := client.Models(context.Background())
 	require.NoError(t, err)
