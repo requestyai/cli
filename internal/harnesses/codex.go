@@ -38,12 +38,14 @@ type codexAuth struct {
 }
 
 type CodexHarness struct {
-	config config.Config
+	config    config.Config
+	configDir string
 }
 
-func NewCodexHarness(config config.Config) *CodexHarness {
+func NewCodexHarness(config config.Config, configDir string) *CodexHarness {
 	return &CodexHarness{
-		config: config,
+		config:    config,
+		configDir: configDir,
 	}
 }
 
@@ -67,17 +69,9 @@ func (c *CodexHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
 
-	configPath, err := c.configPath()
-	if err != nil {
-		return status, fmt.Errorf("failed to get config path: %w", err)
-	}
-	status.Files = append(status.Files, configPath)
-
-	authPath, err := c.authPath()
-	if err != nil {
-		return status, fmt.Errorf("failed to get auth path: %w", err)
-	}
-	status.Files = append(status.Files, authPath)
+	configPath := c.configPath()
+	authPath := c.authPath()
+	status.Files = append(status.Files, configPath, authPath)
 
 	configExists, err := pathExists(configPath)
 	if err != nil {
@@ -124,10 +118,7 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 }
 
 func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
-	configPath, err := c.configPath()
-	if err != nil {
-		return fmt.Errorf("failed to get config path: %w", err)
-	}
+	configPath := c.configPath()
 
 	config, err := mergeTOMLConfigFile(configPath, map[string]any{
 		"model":                              opts.Model,
@@ -150,10 +141,7 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 		return fmt.Errorf("failed to merge config file: %w", err)
 	}
 
-	authPath, err := c.authPath()
-	if err != nil {
-		return fmt.Errorf("failed to get auth path: %w", err)
-	}
+	authPath := c.authPath()
 
 	auth, err := mergeJSONConfigFile(authPath, map[string]any{
 		"auth_mode":      "apikey",
@@ -192,12 +180,7 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 		Personality:                     "pragmatic",
 	}
 
-	configPath, err := c.configPath()
-	if err != nil {
-		return fmt.Errorf("failed to get config path: %w", err)
-	}
-
-	if err := backupAndWriteConfigFileAsTOML(configPath, &config); err != nil {
+	if err := backupAndWriteConfigFileAsTOML(c.configPath(), &config); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
@@ -206,32 +189,17 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 		OpenAIAPIKey: c.config.APIKey,
 	}
 
-	authPath, err := c.authPath()
-	if err != nil {
-		return fmt.Errorf("failed to get auth path: %w", err)
-	}
-
-	if err := backupAndWriteConfigFileAsJSON(authPath, &auth); err != nil {
+	if err := backupAndWriteConfigFileAsJSON(c.authPath(), &auth); err != nil {
 		return fmt.Errorf("failed to write auth file: %w", err)
 	}
 
 	return nil
 }
 
-func (c *CodexHarness) configPath() (string, error) {
-	homePath, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home path: %w", err)
-	}
-
-	return filepath.Join(homePath, ".codex", "config.toml"), nil
+func (c *CodexHarness) configPath() string {
+	return filepath.Join(c.configDir, "config.toml")
 }
 
-func (c *CodexHarness) authPath() (string, error) {
-	homePath, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home path: %w", err)
-	}
-
-	return filepath.Join(homePath, ".codex", "auth.json"), nil
+func (c *CodexHarness) authPath() string {
+	return filepath.Join(c.configDir, "auth.json")
 }

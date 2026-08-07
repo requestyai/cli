@@ -62,6 +62,7 @@ type integrationItem struct {
 // integrationsLoadedMsg carries refreshed harness statuses back to the page.
 type integrationsLoadedMsg struct {
 	items []integrationItem
+	err   error
 }
 
 // integrationModelsLoadedMsg carries the model catalogue back to the wizard.
@@ -83,6 +84,7 @@ type integrationState struct {
 	items      []integrationItem
 	cursor     int
 	refreshing bool
+	loadErr    error
 
 	wizard integrationWizardState
 }
@@ -96,7 +98,11 @@ func (m integrationState) init() tea.Cmd {
 }
 
 func (m integrationState) load() tea.Msg {
-	registered := harnesses.Harnesses(m.config)
+	registered, err := harnesses.Harnesses(m.config)
+	if err != nil {
+		return integrationsLoadedMsg{err: err}
+	}
+
 	items := make([]integrationItem, 0, len(registered))
 	for _, harness := range registered {
 		status, err := harness.Status()
@@ -150,6 +156,7 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 			selected = m.items[m.cursor].harness.Name()
 		}
 		m.items = typedMsg.items
+		m.loadErr = typedMsg.err
 		m.refreshing = false
 		m.cursor = 0
 		for i := range m.items {
@@ -363,6 +370,9 @@ func (m integrationState) cellStyle(row, col int) lipgloss.Style {
 }
 
 func (m integrationState) detail(width int) string {
+	if m.loadErr != nil {
+		return theme.Panel.Render(theme.Bad.Render("Could not load harnesses: " + m.loadErr.Error()))
+	}
 	if len(m.items) == 0 {
 		return theme.Panel.Render(theme.Muted.Render("No harnesses found"))
 	}

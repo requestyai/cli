@@ -2,6 +2,7 @@ package harnesses
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/requestyai/cli/internal/config"
@@ -15,15 +16,16 @@ func TestClaudeHarnessRoundTrip(t *testing.T) {
 		APIKey:        "my-api-key",
 	}
 
-	harness := NewClaudeHarness(config)
+	// Simulate a machine with Claude Code installed but not integrated.
+	configDir := t.TempDir()
+	settingsPath := filepath.Join(configDir, "settings.json")
+	require.NoError(t, os.WriteFile(settingsPath, []byte(`{"theme": "dark"}`), 0o600))
 
-	// Validate not integrated on the github runner.
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
+	harness := NewClaudeHarness(config, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
-	assert.Contains(t, status.Files, homePath+"/.claude/settings.json")
+	assert.Contains(t, status.Files, settingsPath)
 	assert.Equal(t, false, status.Configured)
 
 	// Configure the machine.
@@ -36,4 +38,13 @@ func TestClaudeHarnessRoundTrip(t *testing.T) {
 	status, err = harness.Status()
 	require.NoError(t, err)
 	assert.Equal(t, true, status.Configured)
+}
+
+func TestClaudeHarnessDefaultConfigDir(t *testing.T) {
+	homePath, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	configDir, err := DefaultConfigDirClaudeCode()
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join(homePath, ".claude"), configDir)
 }
