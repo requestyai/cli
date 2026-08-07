@@ -73,9 +73,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 func save(apiKey string) tea.Cmd {
 	return func() tea.Msg {
 		cfg := config.Config{
-			APIKey:        apiKey,
+			APIKey:        strings.TrimSpace(apiKey),
 			RouterBaseURL: config.DefaultRouterBaseURL,
-			APIBaseURL:    config.DefaultAPIBaseURL,
 		}
 
 		if err := config.Save(cfg); err != nil {

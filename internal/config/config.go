@@ -21,7 +21,7 @@ const (
 type Config struct {
 	APIKey        string `json:"api_key"`
 	RouterBaseURL string `json:"router_base_url"`
-	APIBaseURL    string `json:"api_base_url"`
+	APIBaseURL    string `json:"api_base_url,omitempty"`
 }
 
 // Load reads the settings. A missing file is not an error: it means the user
