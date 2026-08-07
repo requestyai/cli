@@ -20,12 +20,14 @@ type claudeSettings struct {
 }
 
 type ClaudeHarness struct {
-	config config.Config
+	config    config.Config
+	configDir string
 }
 
-func NewClaudeHarness(config config.Config) *ClaudeHarness {
+func NewClaudeHarness(config config.Config, configDir string) *ClaudeHarness {
 	return &ClaudeHarness{
-		config: config,
+		config:    config,
+		configDir: configDir,
 	}
 }
 
@@ -49,10 +51,7 @@ func (c *ClaudeHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
 
-	settingsPath, err := c.settingsPath()
-	if err != nil {
-		return status, fmt.Errorf("failed to get settings path: %w", err)
-	}
+	settingsPath := c.settingsPath()
 	status.Files = append(status.Files, settingsPath)
 
 	settingsExists, err := pathExists(settingsPath)
@@ -95,10 +94,7 @@ func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
 }
 
 func (c *ClaudeHarness) configureMerge(opts ConfigureOptions) error {
-	settingsPath, err := c.settingsPath()
-	if err != nil {
-		return fmt.Errorf("failed to get settings path: %w", err)
-	}
+	settingsPath := c.settingsPath()
 
 	settings, err := mergeJSONConfigFile(settingsPath, map[string]any{
 		"env": map[string]any{
@@ -124,23 +120,13 @@ func (c *ClaudeHarness) configureOverwrite(opts ConfigureOptions) error {
 	settings.Env.AnthropicAuthToken = c.config.APIKey
 	settings.Env.AnthropicModel = opts.Model
 
-	settingsPath, err := c.settingsPath()
-	if err != nil {
-		return fmt.Errorf("failed to get settings path: %w", err)
-	}
-
-	if err := backupAndWriteConfigFileAsJSON(settingsPath, &settings); err != nil {
+	if err := backupAndWriteConfigFileAsJSON(c.settingsPath(), &settings); err != nil {
 		return fmt.Errorf("failed to write settings file: %w", err)
 	}
 
 	return nil
 }
 
-func (c *ClaudeHarness) settingsPath() (string, error) {
-	homePath, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home path: %w", err)
-	}
-
-	return filepath.Join(homePath, ".claude", "settings.json"), nil
+func (c *ClaudeHarness) settingsPath() string {
+	return filepath.Join(c.configDir, "settings.json")
 }
