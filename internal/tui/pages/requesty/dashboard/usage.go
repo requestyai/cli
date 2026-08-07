@@ -2,10 +2,16 @@ package dashboard
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/requestyai/cli/internal/client"
+	"github.com/requestyai/cli/internal/tui/theme"
+	"github.com/requestyai/cli/internal/tui/ui/card"
+	"github.com/requestyai/cli/internal/tui/ui/text"
+	"github.com/requestyai/cli/internal/util"
 	"github.com/shopspring/decimal"
 )
 
@@ -82,6 +88,58 @@ func (u *usageState) refresh() tea.Cmd {
 
 	u.refreshing = true
 	return u.load
+}
+
+func (u usageState) view(width, height int) string {
+	if height <= 0 {
+		return ""
+	}
+	if u.err != nil && !u.loaded {
+		return theme.Bad.Render("Could not load usage: " + u.err.Error())
+	}
+
+	cards := u.cards(width)
+	if lipgloss.Height(cards) > height {
+		return ""
+	}
+
+	header := text.RenderSplitLine("", theme.Muted.Render("last 30 days"), width)
+	if lipgloss.Height(cards)+lipgloss.Height(header) > height {
+		return cards
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Left, header, cards)
+}
+
+func (u usageState) cards(width int) string {
+	values := [3]string{"…", "…", "…"}
+	if u.loaded {
+		values = [3]string{
+			util.FormatSpend(u.totals.Spend),
+			util.FormatCount(u.totals.Requests),
+			util.FormatCount(u.totals.Tokens),
+		}
+	}
+
+	if width < 42 {
+		line := fmt.Sprintf("Spend %s · Requests %s · Tokens %s", values[0], values[1], values[2])
+		if u.refreshing {
+			line += " · refreshing"
+		}
+		return lipgloss.NewStyle().MaxWidth(max(width, 1)).Render(line)
+	}
+
+	gaps := 2
+	baseWidth := (width - gaps) / 3
+	lastWidth := width - gaps - 2*baseWidth
+	return lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		card.Render("SPEND", values[0], baseWidth),
+		text.SpaceSeparator,
+		card.Render("REQUESTS", values[1], baseWidth),
+		text.SpaceSeparator,
+		card.Render("TOKENS", values[2], lastWidth),
+	)
 }
 
 // usageRange returns the inclusive start and end of the usage window ending at now.
