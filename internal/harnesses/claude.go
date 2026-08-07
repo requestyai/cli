@@ -77,7 +77,7 @@ func (c *ClaudeHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
-	if settings.Env.AnthropicBaseURL == c.config.BaseURL {
+	if settings.Env.AnthropicBaseURL == c.config.RouterBaseURL {
 		status.Configured = true
 	} else {
 		status.Configured = false
@@ -88,7 +88,7 @@ func (c *ClaudeHarness) Status() (Status, error) {
 
 func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
 	settings := claudeSettings{}
-	settings.Env.AnthropicBaseURL = c.config.BaseURL
+	settings.Env.AnthropicBaseURL = c.config.RouterBaseURL
 	settings.Env.AnthropicAuthToken = c.config.APIKey
 	settings.Env.AnthropicModel = opts.Model
 
