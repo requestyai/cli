@@ -24,17 +24,12 @@ type codexConfig struct {
 	Personality                     string `toml:"personality"`
 
 	ModelProviders map[string]codexProvider `toml:"model_providers"`
-	Projects       map[string]codexProject  `toml:"projects"`
 }
 
 type codexProvider struct {
 	Name        string            `toml:"name"`
 	BaseURL     string            `toml:"base_url"`
 	HTTPHeaders map[string]string `toml:"http_headers"`
-}
-
-type codexProject struct {
-	TrustLevel string `toml:"trust_level"`
 }
 
 type codexAuth struct {
@@ -121,11 +116,64 @@ func (c *CodexHarness) Status() (Status, error) {
 }
 
 func (c *CodexHarness) Configure(opts ConfigureOptions) error {
-	homePath, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home path: %w", err)
+	if opts.Overwrite {
+		return c.configureOverwrite(opts)
 	}
 
+	return c.configureMerge(opts)
+}
+
+func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
+	configPath, err := c.configPath()
+	if err != nil {
+		return fmt.Errorf("failed to get config path: %w", err)
+	}
+
+	config, err := mergeTOMLConfigFile(configPath, map[string]any{
+		"model":                              opts.Model,
+		"model_provider":                     codexModelProvider,
+		"model_reasoning_effort":             "high",
+		"model_supports_reasoning_summaries": false,
+		"web_search":                         "live",
+		"personality":                        "pragmatic",
+		"model_providers": map[string]any{
+			codexModelProvider: map[string]any{
+				"name":     "Requesty",
+				"base_url": fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
+				"http_headers": map[string]any{
+					"X-Title": "OpenAI Codex",
+				},
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to merge config file: %w", err)
+	}
+
+	authPath, err := c.authPath()
+	if err != nil {
+		return fmt.Errorf("failed to get auth path: %w", err)
+	}
+
+	auth, err := mergeJSONConfigFile(authPath, map[string]any{
+		"auth_mode":      "apikey",
+		"OPENAI_API_KEY": c.config.APIKey,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to merge auth file: %w", err)
+	}
+
+	if err := backupAndWriteConfigFileAsTOML(configPath, &config); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	if err := backupAndWriteConfigFileAsJSON(authPath, &auth); err != nil {
+		return fmt.Errorf("failed to write auth file: %w", err)
+	}
+
+	return nil
+}
+
+func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 	config := codexConfig{
 		Model:         opts.Model,
 		ModelProvider: codexModelProvider,
@@ -142,11 +190,6 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 		ModelSupportsReasoningSummaries: false,
 		WebSearch:                       "live",
 		Personality:                     "pragmatic",
-		Projects: map[string]codexProject{
-			homePath: {
-				TrustLevel: "trusted",
-			},
-		},
 	}
 
 	configPath, err := c.configPath()

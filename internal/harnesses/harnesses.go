@@ -9,7 +9,8 @@ type Status struct {
 }
 
 type ConfigureOptions struct {
-	Model string
+	Model     string
+	Overwrite bool
 }
 
 type Harness interface {

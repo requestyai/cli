@@ -29,7 +29,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) ModalOpen() bool {
-	return m.integrations.pickerOpen
+	return m.integrations.wizard.open
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -52,7 +52,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View(width, height int) string {
 	if m.ModalOpen() {
-		return m.integrations.pickerView(width, height)
+		return m.integrations.wizardView(width, height)
 	}
 
 	// Give usage only the space left after reserving the integrations minimum and separator.
