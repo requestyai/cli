@@ -46,12 +46,12 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch typedMsg := msg.(type) {
 	case failedMsg:
-		m.err = msg.err
+		m.err = typedMsg.err
 
 	case tea.KeyPressMsg:
-		switch msg.String() {
+		switch typedMsg.String() {
 		case "enter":
 			apiKey := strings.TrimSpace(m.input.Value())
 			if apiKey == "" {
@@ -75,6 +75,7 @@ func save(apiKey string) tea.Cmd {
 		cfg := config.Config{
 			APIKey:        apiKey,
 			RouterBaseURL: config.DefaultRouterBaseURL,
+			APIBaseURL:    config.DefaultAPIBaseURL,
 		}
 
 		if err := config.Save(cfg); err != nil {

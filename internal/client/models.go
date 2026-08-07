@@ -23,7 +23,7 @@ type Model struct {
 }
 
 func (c *Client) Models(ctx context.Context) ([]Model, error) {
-	endpoint := fmt.Sprintf("%s/models", c.config.RouterBaseURL)
+	endpoint := fmt.Sprintf("%s/v1/models", c.config.RouterBaseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

@@ -9,6 +9,7 @@ import (
 )
 
 const LineSeparator = ""
+const SpaceSeparator = " "
 
 // RenderSplitHeaderSection is a heading above a block of content, with
 // the right-hand note set against the far edge of the given width.

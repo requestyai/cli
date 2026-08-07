@@ -3,6 +3,8 @@ package util
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/shopspring/decimal"
 )
 
 // FormatTokens abbreviates a context window: 131072 reads as "131K".
@@ -28,4 +30,21 @@ func FormatCachePrice(price float64) string {
 	}
 
 	return FormatPrice(price)
+}
+
+// FormatSpend renders an amount already expressed in dollars.
+func FormatSpend(spend decimal.Decimal) string {
+	return "$" + spend.StringFixed(2)
+}
+
+// FormatCount abbreviates dashboard totals while retaining one decimal place.
+func FormatCount(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fK", float64(n)/1_000)
+	default:
+		return strconv.Itoa(n)
+	}
 }
