@@ -1,0 +1,264 @@
+name: PR AI Cost
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to update cost for"
+        required: true
+        type: number
+
+permissions:
+  pull-requests: write
+  issues: write
+
+jobs:
+  cost:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          REQUESTY_MANAGEMENT_KEY: ${{ secrets.REQUESTY_MANAGEMENT_KEY }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number || '0' }}
+        with:
+          script: |
+            const REQUESTY_BASE_URL = 'https://api-v2.requesty.ai/v1/manage';
+            const LOOKBACK_DAYS = 30;
+            const COMMENT_MARKER = '<!-- requesty-cost-bot -->';
+
+            function getCostColor(spend) {
+              if (spend < 5) return '0e8a16';
+              if (spend < 15) return 'fbca04';
+              if (spend < 50) return 'e11d48';
+              return 'b60205';
+            }
+
+            function fmtTokens(n) {
+              if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+              if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+              return `${n}`;
+            }
+
+            function shortModel(model) {
+              // Drop the provider prefix and any trailing date stamp, e.g.
+              // "anthropic/claude-sonnet-4-20250514" -> "claude-sonnet-4"
+              return model
+                .replace(/^[^/]+\//, '')
+                .replace(/-\d{8}$/, '');
+            }
+
+            const fmt = (n) => new Intl.NumberFormat('en-US').format(n);
+            const fmtUSD = (n) => `$${n.toFixed(2)}`;
+
+            async function ensureLabel(name, color, description) {
+              try {
+                await github.rest.issues.updateLabel({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  name, color, description,
+                });
+              } catch {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  name, color, description,
+                });
+              }
+            }
+
+            async function applyLabel(prNumber, prefix, name, color, description) {
+              const prLabels = await github.rest.issues.listLabelsOnIssue({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: prNumber,
+              });
+              for (const label of prLabels.data) {
+                if (label.name.startsWith(prefix) && label.name !== name) {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner, repo: context.repo.repo,
+                    issue_number: prNumber, name: label.name,
+                  });
+                }
+              }
+              await ensureLabel(name, color, description);
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: prNumber, labels: [name],
+              });
+            }
+
+            async function requestyFetch(path) {
+              const res = await fetch(`${REQUESTY_BASE_URL}${path}`, {
+                headers: { 'Authorization': `Bearer ${managementKey}` },
+              });
+              if (!res.ok) {
+                throw new Error(`Requesty API ${path}: ${res.status} ${res.statusText}`);
+              }
+              return res.json();
+            }
+
+            // --- Validate inputs ---
+            const managementKey = process.env.REQUESTY_MANAGEMENT_KEY;
+            if (!managementKey) {
+              core.setFailed('REQUESTY_MANAGEMENT_KEY secret not set');
+              return;
+            }
+
+            const prNumber = context.payload.pull_request?.number || parseInt(process.env.INPUT_PR_NUMBER, 10);
+            if (!prNumber) {
+              core.setFailed('Could not determine PR number');
+              return;
+            }
+
+            // --- Resolve branch ---
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+            const branch = pr.data.head.ref;
+            const repo = `${context.repo.owner}/${context.repo.repo}`;
+
+            // --- Fetch org-level usage grouped by repo, branch, model, user, harness ---
+            const now = new Date();
+            const start = new Date(now);
+            start.setDate(start.getDate() - LOOKBACK_DAYS);
+
+            const params = new URLSearchParams({
+              start: start.toISOString(),
+              end: now.toISOString(),
+              resolution: 'month',
+            });
+            params.append('group_by', 'extra.Repo');
+            params.append('group_by', 'extra.Branch');
+            params.append('group_by', 'model_requested');
+            params.append('group_by', 'extra.User');
+            params.append('group_by', 'origin_title');
+
+            core.info(`Fetching org usage for ${repo}@${branch}`);
+            const usageData = await requestyFetch(`/org/usage?${params}`);
+
+            let totalSpend = 0;
+            let totalReqs = 0;
+            let totalInputTokens = 0;
+            let totalOutputTokens = 0;
+            const modelBreakdown = {};
+            const userBreakdown = {};
+            const harnessBreakdown = {};
+
+            for (const entry of Object.values(usageData.usage || {})) {
+              for (const g of entry.grouped_data || []) {
+                const gRepo = g.group_by_values['extra.Repo'] || '';
+                const gBranch = g.group_by_values['extra.Branch'] || '';
+                if (gRepo !== repo || gBranch !== branch) continue;
+
+                const spend = parseFloat(g.spend) || 0;
+                const reqs = g.completions_requests || 0;
+                const model = g.group_by_values['model_requested'] || 'unknown';
+                const user = g.group_by_values['extra.User'] || 'unknown';
+                const harness = g.group_by_values['origin_title'] || 'unknown';
+
+                totalSpend += spend;
+                totalReqs += reqs;
+                totalInputTokens += g.input_tokens || 0;
+                totalOutputTokens += g.output_tokens || 0;
+
+                modelBreakdown[model] ??= { spend: 0, reqs: 0 };
+                modelBreakdown[model].spend += spend;
+                modelBreakdown[model].reqs += reqs;
+
+                userBreakdown[user] ??= { spend: 0, reqs: 0 };
+                userBreakdown[user].spend += spend;
+                userBreakdown[user].reqs += reqs;
+
+                harnessBreakdown[harness] ??= { spend: 0, reqs: 0 };
+                harnessBreakdown[harness].spend += spend;
+                harnessBreakdown[harness].reqs += reqs;
+              }
+            }
+
+            // --- Build comment body ---
+            let body = COMMENT_MARKER + '\n';
+
+            if (totalSpend === 0) {
+              body += `### AI Cost\n\nNo spend detected for branch \`${branch}\` in the last ${LOOKBACK_DAYS} days.\n`;
+            } else {
+              body += `### AI Cost: ${fmtUSD(totalSpend)}\n\n`;
+              body += `| Metric | Value |\n|---|---|\n`;
+              body += `| **Branch** | \`${branch}\` |\n`;
+              body += `| **Requests** | ${fmt(totalReqs)} |\n`;
+              body += `| **Input tokens** | ${fmt(totalInputTokens)} |\n`;
+              body += `| **Output tokens** | ${fmt(totalOutputTokens)} |\n\n`;
+
+              const harnesses = Object.entries(harnessBreakdown).sort((a, b) => b[1].spend - a[1].spend);
+              if (harnesses.length > 0) {
+                body += `**By harness**\n\n| Harness | Cost | Requests |\n|---|---|---|\n`;
+                for (const [harness, data] of harnesses) {
+                  body += `| ${harness} | ${fmtUSD(data.spend)} | ${fmt(data.reqs)} |\n`;
+                }
+                body += '\n';
+              }
+
+              const models = Object.entries(modelBreakdown).sort((a, b) => b[1].spend - a[1].spend);
+              if (models.length > 0) {
+                body += `**By model**\n\n| Model | Cost | Requests |\n|---|---|---|\n`;
+                for (const [model, data] of models) {
+                  body += `| ${model} | ${fmtUSD(data.spend)} | ${fmt(data.reqs)} |\n`;
+                }
+                body += '\n';
+              }
+
+              const users = Object.entries(userBreakdown).sort((a, b) => b[1].spend - a[1].spend);
+              if (users.length > 1) {
+                body += `**By user**\n\n| User | Cost | Requests |\n|---|---|---|\n`;
+                for (const [user, data] of users) {
+                  body += `| ${user} | ${fmtUSD(data.spend)} | ${fmt(data.reqs)} |\n`;
+                }
+                body += '\n';
+              }
+            }
+
+            body += `\n<sub>Updated ${now.toISOString().slice(0, 16)}Z · last ${LOOKBACK_DAYS} days · data from Requesty</sub>\n`;
+
+            // --- Upsert PR comment ---
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+            });
+            const existing = comments.find(c => c.body?.includes(COMMENT_MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated comment id=${existing.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body,
+              });
+              core.info('Created new cost comment');
+            }
+
+            // --- Apply labels ---
+            const costLabel = `cost:${fmtUSD(totalSpend)}`;
+            await applyLabel(prNumber, 'cost:', costLabel, getCostColor(totalSpend), 'AI cost for this branch');
+
+            const topModel = Object.entries(modelBreakdown).sort((a, b) => b[1].spend - a[1].spend)[0];
+            if (topModel) {
+              const modelLabel = `model:${shortModel(topModel[0])}`;
+              await applyLabel(prNumber, 'model:', modelLabel, '7c3aed', 'Top model used');
+            }
+
+            const totalTokens = totalInputTokens + totalOutputTokens;
+            if (totalTokens > 0) {
+              const tokensLabel = `tokens:${fmtTokens(totalTokens)}`;
+              await applyLabel(prNumber, 'tokens:', tokensLabel, '06b6d4', 'Total tokens used');
+            }
+
+            core.info(`Done: ${costLabel} | model:${topModel ? shortModel(topModel[0]) : 'n/a'} | tokens:${fmtTokens(totalInputTokens + totalOutputTokens)}`);
