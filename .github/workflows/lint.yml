@@ -53,3 +53,14 @@ jobs:
 
       - name: Vet
         run: go vet ./...
+
+  shell:
+    name: Shell
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Check install script
+        run: shellcheck --shell=sh install.sh
