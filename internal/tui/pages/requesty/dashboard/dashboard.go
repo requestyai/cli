@@ -8,7 +8,7 @@ import (
 	"github.com/requestyai/cli/internal/tui/ui/text"
 )
 
-const integrationMinHeight = 13
+const integrationMinHeight = 10
 
 // Model is the single Requesty page. Integrations are the primary section;
 // usage is added above them when the terminal has room.
@@ -41,6 +41,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "r":
 			if !m.ModalOpen() {
 				return m, tea.Batch(m.usage.refresh(), m.integrations.refresh())
+			}
+		default:
+			if !m.ModalOpen() && m.usage.selectMetric(typedMsg.String()) {
+				return m, nil
 			}
 		}
 	}
