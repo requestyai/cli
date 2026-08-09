@@ -309,6 +309,7 @@ func (m integrationState) view(width, height int) string {
 			t.Width(),
 			[2]string{"↑/↓", "move"},
 			[2]string{"space", "configure"},
+			[2]string{"1/2/3", "usage metric"},
 			[2]string{"r", "refresh"},
 			[2]string{"q/esc", "quit"},
 		),
