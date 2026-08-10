@@ -57,6 +57,36 @@ func TestOpenCodeHarnessRoundTrip(t *testing.T) {
 	}`, string(settings))
 }
 
+func TestOpenCodeHarnessConfigureCreatesMissingConfig(t *testing.T) {
+	config := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "opencode.json")
+	harness := NewOpenCodeHarness(config, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "anthropic/claude-fable-5",
+	}))
+
+	settings, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"$schema": "https://opencode.ai/config.json",
+		"model": "requesty/anthropic/claude-fable-5",
+		"provider": {
+			"requesty": {
+				"options": {
+					"baseURL": "https://router.requesty.ai/v1",
+					"apiKey": "my-api-key",
+					"headers": {"X-Title": "OpenCode"}
+				}
+			}
+		}
+	}`, string(settings))
+}
+
 func TestOpenCodeHarnessDefaultConfigDir(t *testing.T) {
 	homePath, err := os.UserHomeDir()
 	require.NoError(t, err)
