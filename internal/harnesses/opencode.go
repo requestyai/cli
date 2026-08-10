@@ -108,7 +108,7 @@ func (o *OpenCodeHarness) Configure(opts ConfigureOptions) error {
 func (o *OpenCodeHarness) configureMerge(opts ConfigureOptions) error {
 	configPath := o.configPath()
 
-	settings, err := mergeJSONConfigFile(configPath, map[string]any{
+	settings, err := mergeOrCreateJSONConfigFile(configPath, map[string]any{
 		"$schema": openCodeSchema,
 		"model":   o.modelID(opts.Model),
 		"provider": map[string]any{

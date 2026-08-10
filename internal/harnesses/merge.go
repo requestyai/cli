@@ -3,6 +3,7 @@ package harnesses
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -10,9 +11,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func mergeOrCreateJSONConfigFile(path string, patch map[string]any) (map[string]any, error) {
+	return mergeJSONConfigFileWithOptions(path, patch, mergeOptions{
+		AllowFileNotExists: true,
+	})
+}
+
 func mergeJSONConfigFile(path string, patch map[string]any) (map[string]any, error) {
+	return mergeJSONConfigFileWithOptions(path, patch, mergeOptions{
+		AllowFileNotExists: false,
+	})
+}
+
+type mergeOptions struct {
+	AllowFileNotExists bool
+}
+
+func mergeJSONConfigFileWithOptions(path string, patch map[string]any, options mergeOptions) (map[string]any, error) {
 	dataBytes, err := os.ReadFile(path)
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) && options.AllowFileNotExists {
+		dataBytes = []byte("{}\n")
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
