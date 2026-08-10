@@ -128,39 +128,14 @@ func (u *usageState) update(msg tea.Msg) {
 	}
 }
 
-// selectMetric applies a keyboard selection and reports whether it handled the key.
-func (u *usageState) selectMetric(key string) bool {
-	switch key {
-	case "1":
-		u.metric = usageMetricSpend
-	case "2":
-		u.metric = usageMetricRequests
-	case "3":
-		u.metric = usageMetricTokens
-	default:
-		return false
-	}
-	return true
+// toggleMetric advances to the next usage metric.
+func (u *usageState) toggleMetric() {
+	u.metric = (u.metric + 1) % 3
 }
 
-// selectGroup applies a grouping selection and reports whether it changed.
-func (u *usageState) selectGroup(key string) bool {
-	var group usageGroup
-	switch key {
-	case "6":
-		group = usageGroupModel
-	case "7":
-		group = usageGroupOrigin
-	case "8":
-		group = usageGroupProvider
-	default:
-		return false
-	}
-	if group == u.group {
-		return false
-	}
-	u.group = group
-	return true
+// toggleGroup advances to the next usage grouping.
+func (u *usageState) toggleGroup() {
+	u.group = (u.group + 1) % 3
 }
 
 // refresh reloads usage unless a refresh is already in flight.
@@ -360,12 +335,12 @@ func (g usageGroup) label() string {
 func (u usageState) metricSelector() string {
 	metrics := []usageMetric{usageMetricSpend, usageMetricRequests, usageMetricTokens}
 	choices := make([]string, 0, len(metrics))
-	for i, metric := range metrics {
+	for _, metric := range metrics {
 		style := theme.PillOff
 		if metric == u.metric {
 			style = theme.Pill
 		}
-		choices = append(choices, style.Render(fmt.Sprintf("%d %s", i+1, metric.label())))
+		choices = append(choices, style.Render(metric.label()))
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, choices...)
@@ -374,12 +349,12 @@ func (u usageState) metricSelector() string {
 func (u usageState) groupSelector() string {
 	groups := []usageGroup{usageGroupModel, usageGroupOrigin, usageGroupProvider}
 	choices := make([]string, 0, len(groups))
-	for i, group := range groups {
+	for _, group := range groups {
 		style := theme.PillOff
 		if group == u.group {
 			style = theme.Pill
 		}
-		choices = append(choices, style.Render(fmt.Sprintf("%d %s", i+6, group.label())))
+		choices = append(choices, style.Render(group.label()))
 	}
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, choices...)
