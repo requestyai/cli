@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/requestyai/cli/internal/client"
@@ -37,6 +38,7 @@ type integrationWizardState struct {
 	options     harnesses.ConfigureOptions
 	models      []client.Model
 	modelCursor int
+	modelSearch textinput.Model
 	modeCursor  int
 
 	modelsErr    error
@@ -91,6 +93,20 @@ type integrationState struct {
 
 func newIntegrationState(client *client.Client, config config.Config) integrationState {
 	return integrationState{client: client, config: config}
+}
+
+func newIntegrationWizardState() (integrationWizardState, tea.Cmd) {
+	search := textinput.New()
+	search.Prompt = "Search: "
+	search.Placeholder = "type to filter models"
+	search.CharLimit = 200
+	search.SetWidth(configWidth)
+	focus := search.Focus()
+
+	return integrationWizardState{
+		open:        true,
+		modelSearch: search,
+	}, focus
 }
 
 func (m integrationState) init() tea.Cmd {
@@ -195,8 +211,9 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 			}
 		case "enter":
 			if m.canConfigure() {
-				m.wizard = integrationWizardState{open: true}
-				return m, m.loadModels
+				var focus tea.Cmd
+				m.wizard, focus = newIntegrationWizardState()
+				return m, tea.Batch(m.loadModels, focus)
 			}
 		}
 	}
@@ -220,29 +237,54 @@ func (m integrationState) updateWizard(msg tea.KeyPressMsg) (integrationState, t
 }
 
 func (m integrationState) updateModelStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
+	models := m.wizard.filteredModels()
+
 	switch msg.String() {
 	case "esc":
 		m.wizard = integrationWizardState{}
-	case "up", "k":
+	case "up":
 		if m.wizard.modelCursor > 0 {
 			m.wizard.modelCursor--
 		}
-	case "down", "j":
-		if m.wizard.modelCursor < len(m.wizard.models)-1 {
+	case "down":
+		if m.wizard.modelCursor < len(models)-1 {
 			m.wizard.modelCursor++
 		}
 	case "enter":
 		if m.wizard.modelsErr == nil &&
-			len(m.wizard.models) > 0 &&
+			len(models) > 0 &&
 			m.cursor < len(m.items) {
-			m.wizard.options.Model = m.wizard.models[m.wizard.modelCursor].ID
+			m.wizard.options.Model = models[m.wizard.modelCursor].ID
 			m.wizard.step = integrationModeWizardStep
 			m.wizard.modeCursor = 0
 			m.wizard.configureErr = nil
 		}
+	default:
+		previousQuery := m.wizard.modelSearch.Value()
+		var cmd tea.Cmd
+		m.wizard.modelSearch, cmd = m.wizard.modelSearch.Update(msg)
+		if m.wizard.modelSearch.Value() != previousQuery {
+			m.wizard.modelCursor = 0
+		}
+		return m, cmd
 	}
 
 	return m, nil
+}
+
+func (m integrationWizardState) filteredModels() []client.Model {
+	query := strings.ToLower(strings.TrimSpace(m.modelSearch.Value()))
+	if query == "" {
+		return m.models
+	}
+
+	models := make([]client.Model, 0, len(m.models))
+	for _, model := range m.models {
+		if strings.Contains(strings.ToLower(model.ID), query) {
+			models = append(models, model)
+		}
+	}
+	return models
 }
 
 func (m integrationState) updateModeStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
@@ -409,7 +451,7 @@ func (m integrationState) detail(width int) string {
 
 func (m integrationState) wizardView(width, height int) string {
 	inner := max(min(width-8, 80), 24)
-	page := m.wizardPage(inner, height)
+	page := m.wizardPage(inner)
 	if m.wizard.configuring {
 		page.body = theme.Muted.Render("Configuring harness…")
 	}
@@ -442,10 +484,10 @@ func (m integrationState) wizardView(width, height int) string {
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, body)
 }
 
-func (m integrationState) wizardPage(inner, height int) integrationWizardPage {
+func (m integrationState) wizardPage(inner int) integrationWizardPage {
 	switch m.wizard.step {
 	case integrationModelWizardStep:
-		return m.modelStepPage(inner, height)
+		return m.modelStepPage(inner)
 	case integrationModeWizardStep:
 		return m.modeStepPage(inner)
 	default:
@@ -453,35 +495,41 @@ func (m integrationState) wizardPage(inner, height int) integrationWizardPage {
 	}
 }
 
-func (m integrationState) modelStepPage(inner, height int) integrationWizardPage {
+func (m integrationState) modelStepPage(inner int) integrationWizardPage {
 	page := integrationWizardPage{
 		title:      "Choose a Requesty model",
 		enterHint:  "continue",
 		escapeHint: "cancel",
 	}
 
+	search := m.wizard.modelSearch.View()
+	models := m.wizard.filteredModels()
+	var list string
 	switch {
 	case m.wizard.modelsErr != nil:
-		page.body = theme.Bad.Render(m.wizard.modelsErr.Error())
+		list = theme.Bad.Render(m.wizard.modelsErr.Error())
 	case m.wizard.models == nil:
-		page.body = theme.Muted.Render("Loading models…")
+		list = theme.Muted.Render("Loading models…")
 	case len(m.wizard.models) == 0:
-		page.body = theme.Muted.Render("No models available")
+		list = theme.Muted.Render("No models available")
+	case len(models) == 0:
+		list = theme.Muted.Render("No models match your search")
 	default:
-		rows := make([][]string, 0, len(m.wizard.models))
-		for _, model := range m.wizard.models {
+		rows := make([][]string, 0, len(models))
+		for _, model := range models {
 			rows = append(rows, []string{model.ID})
 		}
-		page.body = table.Table{
+		list = table.Table{
 			Cols: []table.Column{
 				{Title: "MODEL", Width: inner - 2, Align: table.Left},
 			},
 			Rows:   rows,
 			Cursor: m.wizard.modelCursor,
-			Height: max(height-10, 3),
+			Height: 10,
 			Style:  table.CellStyle(m.wizard.modelCursor),
 		}.Render()
 	}
+	page.body = lipgloss.JoinVertical(lipgloss.Left, search, text.LineSeparator, list)
 
 	return page
 }
