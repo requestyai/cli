@@ -51,25 +51,22 @@ func TestNormalizeUsageDaysFillsAndCombinesDays(t *testing.T) {
 	assert.Equal(t, start.AddDate(0, 0, usageDayCount-1), days[usageDayCount-1].Date)
 }
 
-func TestUsageMetricSelection(t *testing.T) {
+func TestUsageToggles(t *testing.T) {
 	state := usageState{}
 
-	assert.True(t, state.selectMetric("2"))
+	state.toggleMetric()
 	assert.Equal(t, usageMetricRequests, state.metric)
-	assert.True(t, state.selectMetric("3"))
+	state.toggleMetric()
 	assert.Equal(t, usageMetricTokens, state.metric)
-	assert.True(t, state.selectMetric("1"))
+	state.toggleMetric()
 	assert.Equal(t, usageMetricSpend, state.metric)
-	assert.False(t, state.selectMetric("right"))
-	assert.False(t, state.selectMetric("x"))
 
-	assert.True(t, state.selectGroup("7"))
+	state.toggleGroup()
 	assert.Equal(t, usageGroupOrigin, state.group)
-	assert.True(t, state.selectGroup("8"))
+	state.toggleGroup()
 	assert.Equal(t, usageGroupProvider, state.group)
-	assert.True(t, state.selectGroup("6"))
+	state.toggleGroup()
 	assert.Equal(t, usageGroupModel, state.group)
-	assert.False(t, state.selectGroup("x"))
 }
 
 func TestUsageViewAddsChartWhenSpaceAllows(t *testing.T) {
@@ -96,8 +93,8 @@ func TestUsageViewAddsChartWhenSpaceAllows(t *testing.T) {
 	withoutChart := state.view(76, 5)
 	lines := strings.Split(ansi.Strip(withChart), "\n")
 
-	assert.Contains(t, ansi.Strip(withChart), "1 Spend")
-	assert.Contains(t, ansi.Strip(withChart), "6 Model")
+	assert.Contains(t, ansi.Strip(withChart), "Spend")
+	assert.Contains(t, ansi.Strip(withChart), "Model")
 	assert.Contains(t, ansi.Strip(withChart), "$5.00")
 	assert.Contains(t, ansi.Strip(withChart), "openai/gpt-5")
 	require.Greater(t, len(lines), 7)

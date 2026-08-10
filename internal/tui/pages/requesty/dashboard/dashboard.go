@@ -42,11 +42,14 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if !m.ModalOpen() {
 				return m, tea.Batch(m.usage.refresh(), m.integrations.refresh())
 			}
-		default:
-			if !m.ModalOpen() && m.usage.selectMetric(typedMsg.String()) {
+		case "m":
+			if !m.ModalOpen() {
+				m.usage.toggleMetric()
 				return m, nil
 			}
-			if !m.ModalOpen() && m.usage.selectGroup(typedMsg.String()) {
+		case "g":
+			if !m.ModalOpen() {
+				m.usage.toggleGroup()
 				return m, m.usage.reload()
 			}
 		}
