@@ -1,15 +1,21 @@
 package apikey
 
 import (
+	"context"
+	"errors"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
 	"github.com/requestyai/cli/internal/tui/theme"
 	"github.com/requestyai/cli/internal/tui/ui/text"
 )
+
+const checkTimeout = 10 * time.Second
 
 // DoneMsg reports that onboarding finished and the config is on disk. The
 // root model listens for it to hand over to the Requesty app.
@@ -25,8 +31,9 @@ type failedMsg struct {
 
 // Model is the API key step of the onboarding flow.
 type Model struct {
-	input textinput.Model
-	err   error
+	input    textinput.Model
+	err      error
+	checking bool
 }
 
 func New() Model {
@@ -49,16 +56,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch typedMsg := msg.(type) {
 	case failedMsg:
 		m.err = typedMsg.err
+		m.checking = false
 
 	case tea.KeyPressMsg:
 		switch typedMsg.String() {
 		case "enter":
 			apiKey := strings.TrimSpace(m.input.Value())
-			if apiKey == "" {
+			if apiKey == "" || m.checking {
 				return m, nil
 			}
 
-			return m, save(apiKey)
+			m.err = nil
+			m.checking = true
+
+			return m, checkAndSave(apiKey)
 		}
 	}
 
@@ -68,13 +79,25 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, cmd
 }
 
-// save persists the key before onboarding reports itself done, so the next
-// run can skip this step.
-func save(apiKey string) tea.Cmd {
+// checkAndSave rejects a key the gateway does not recognise, so a typo is
+// caught here rather than surfacing later as a failed request. The key is
+// persisted before onboarding reports itself done, so the next run can skip
+// this step.
+func checkAndSave(apiKey string) tea.Cmd {
 	return func() tea.Msg {
 		cfg := config.Config{
 			APIKey:        strings.TrimSpace(apiKey),
 			RouterBaseURL: config.DefaultRouterBaseURL,
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
+		defer cancel()
+
+		// Anything other than a rejection (offline, gateway trouble) is not
+		// the user's problem, so the key is accepted and the next request
+		// reports the failure.
+		if err := client.New(cfg).CheckAPIKey(ctx); errors.Is(err, client.ErrInvalidAPIKey) {
+			return failedMsg{err: errors.New("That key was not recognised. Copy it again from https://app.requesty.ai/api-keys.")}
 		}
 
 		if err := config.Save(cfg); err != nil {
@@ -100,6 +123,9 @@ func (m Model) View(width, height int) string {
 		text.LineSeparator,
 		m.input.View(),
 		text.LineSeparator,
+	}
+	if m.checking {
+		lines = append(lines, wrap.Render(theme.Label.Render("Checking key...")), "")
 	}
 	if m.err != nil {
 		lines = append(lines, wrap.Render(theme.Bad.Render(m.err.Error())), "")
