@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -28,6 +29,25 @@ func TestRenderHandlesAllZeroData(t *testing.T) {
 	style := lipgloss.NewStyle()
 
 	assert.NotEmpty(t, Render(bars, 20, 4, style, style, style, nil))
+}
+
+func TestRenderStacksNamedValues(t *testing.T) {
+	blue := lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Background(lipgloss.Color("4"))
+	green := lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Background(lipgloss.Color("2"))
+	bars := []Bar{{
+		Label: "Mon",
+		Values: []BarValue{
+			{Name: "Model A", Value: 20, Style: blue},
+			{Name: "Model B", Value: 15, Style: green},
+		},
+	}}
+
+	rendered := Render(bars, 20, 5, blue, blue, blue, nil)
+
+	assert.Contains(t, rendered, "50", "the scale uses the stacked total")
+	assert.Contains(t, ansi.Strip(rendered), "Mon")
+	assert.Contains(t, rendered, "\x1b[34;44m")
+	assert.Contains(t, rendered, "\x1b[32;42m")
 }
 
 func TestRenderRequiresRoomForYAxisAndBars(t *testing.T) {

@@ -46,6 +46,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if !m.ModalOpen() && m.usage.selectMetric(typedMsg.String()) {
 				return m, nil
 			}
+			if !m.ModalOpen() && m.usage.selectGroup(typedMsg.String()) {
+				return m, m.usage.reload()
+			}
 		}
 	}
 

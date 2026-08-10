@@ -23,8 +23,9 @@ func TestClientUsage(t *testing.T) {
 		assert.Equal(t, start.Format(time.RFC3339), r.URL.Query().Get("start"))
 		assert.Equal(t, end.Format(time.RFC3339), r.URL.Query().Get("end"))
 		assert.Equal(t, "day", r.URL.Query().Get("resolution"))
+		assert.Equal(t, "model_used", r.URL.Query().Get("group_by"))
 		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
-		_, err := fmt.Fprint(w, `{"usage":{"2026-08-07T00:00:00Z":{"total_requests":7,"total_tokens":42,"spend":"1.25"}}}`)
+		_, err := fmt.Fprint(w, `{"usage":{"2026-08-07T00:00:00Z":{"total_requests":7,"total_tokens":42,"spend":"1.25","grouped_data":[{"group_by_values":{"model_used":"openai/gpt-5"},"total_requests":7,"total_tokens":42,"spend":"1.25"}]}}}`)
 		require.NoError(t, err)
 	}))
 	defer server.Close()
@@ -34,6 +35,7 @@ func TestClientUsage(t *testing.T) {
 		Start:      start,
 		End:        end,
 		Resolution: "day",
+		GroupBy:    "model_used",
 	})
 
 	require.NoError(t, err)
@@ -41,5 +43,11 @@ func TestClientUsage(t *testing.T) {
 		TotalRequests: 7,
 		TotalTokens:   42,
 		Spend:         decimal.RequireFromString("1.25"),
+		GroupedData: []UsageGrouped{{
+			GroupByValues: map[string]any{"model_used": "openai/gpt-5"},
+			TotalRequests: 7,
+			TotalTokens:   42,
+			Spend:         decimal.RequireFromString("1.25"),
+		}},
 	}, usage["2026-08-07T00:00:00Z"])
 }
