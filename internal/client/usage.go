@@ -12,15 +12,38 @@ import (
 )
 
 type UsageEntry struct {
-	TotalRequests int             `json:"total_requests"`
-	TotalTokens   int             `json:"total_tokens"`
-	Spend         decimal.Decimal `json:"spend"`
+	CompletionsRequests   int             `json:"completions_requests"`
+	EmbeddingRequests     int             `json:"embedding_requests"`
+	ImageRequests         int             `json:"image_requests"`
+	SpeechRequests        int             `json:"speech_requests"`
+	TranscriptionRequests int             `json:"transcription_requests"`
+	TotalRequests         int             `json:"total_requests"`
+	Spend                 decimal.Decimal `json:"spend"`
+	InputTokens           int             `json:"input_tokens"`
+	OutputTokens          int             `json:"output_tokens"`
+	TotalTokens           int             `json:"total_tokens"`
+	GroupedData           []UsageGrouped  `json:"grouped_data,omitempty"`
+}
+
+type UsageGrouped struct {
+	GroupByValues         map[string]any  `json:"group_by_values"`
+	CompletionsRequests   int             `json:"completions_requests"`
+	EmbeddingRequests     int             `json:"embedding_requests"`
+	ImageRequests         int             `json:"image_requests"`
+	SpeechRequests        int             `json:"speech_requests"`
+	TranscriptionRequests int             `json:"transcription_requests"`
+	TotalRequests         int             `json:"total_requests"`
+	Spend                 decimal.Decimal `json:"spend"`
+	InputTokens           int             `json:"input_tokens"`
+	OutputTokens          int             `json:"output_tokens"`
+	TotalTokens           int             `json:"total_tokens"`
 }
 
 type UsageInput struct {
 	Start      time.Time
 	End        time.Time
 	Resolution string
+	GroupBy    string
 }
 
 // Usage returns the organization's usage for the requested period.
@@ -43,6 +66,9 @@ func (c *Client) Usage(ctx context.Context, input UsageInput) (map[string]UsageE
 	}
 	if input.Resolution != "" {
 		query.Set("resolution", input.Resolution)
+	}
+	if input.GroupBy != "" {
+		query.Set("group_by", input.GroupBy)
 	}
 	endpoint.RawQuery = query.Encode()
 

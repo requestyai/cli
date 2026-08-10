@@ -12,6 +12,15 @@ import (
 type Bar struct {
 	Label string
 	Value float64
+	// Values turns the bar into a stacked bar. Value is used when Values is empty.
+	Values []BarValue
+}
+
+// BarValue is one named, colored segment in a stacked bar.
+type BarValue struct {
+	Name  string
+	Value float64
+	Style lipgloss.Style
 }
 
 // Render draws a compact vertical bar chart within the requested dimensions.
@@ -28,15 +37,25 @@ func Render(
 	data := make([]barchart.BarData, 0, len(bars))
 	maxValue := 0.0
 	for _, bar := range bars {
-		value := max(bar.Value, 0)
-		maxValue = max(maxValue, value)
-		data = append(data, barchart.BarData{
-			Label: bar.Label,
-			Values: []barchart.BarValue{{
-				Value: value,
-				Style: barStyle,
-			}},
-		})
+		values := make([]barchart.BarValue, 0, max(len(bar.Values), 1))
+		total := 0.0
+		if len(bar.Values) == 0 {
+			value := max(bar.Value, 0)
+			total = value
+			values = append(values, barchart.BarValue{Value: value, Style: barStyle})
+		} else {
+			for _, segment := range bar.Values {
+				value := max(segment.Value, 0)
+				total += value
+				values = append(values, barchart.BarValue{
+					Name:  segment.Name,
+					Value: value,
+					Style: segment.Style,
+				})
+			}
+		}
+		maxValue = max(maxValue, total)
+		data = append(data, barchart.BarData{Label: bar.Label, Values: values})
 	}
 
 	// ntcharts cannot derive a useful scale from an all-zero data set.

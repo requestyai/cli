@@ -62,6 +62,14 @@ func TestUsageMetricSelection(t *testing.T) {
 	assert.Equal(t, usageMetricSpend, state.metric)
 	assert.False(t, state.selectMetric("right"))
 	assert.False(t, state.selectMetric("x"))
+
+	assert.True(t, state.selectGroup("7"))
+	assert.Equal(t, usageGroupOrigin, state.group)
+	assert.True(t, state.selectGroup("8"))
+	assert.Equal(t, usageGroupProvider, state.group)
+	assert.True(t, state.selectGroup("6"))
+	assert.Equal(t, usageGroupModel, state.group)
+	assert.False(t, state.selectGroup("x"))
 }
 
 func TestUsageViewAddsChartWhenSpaceAllows(t *testing.T) {
@@ -76,19 +84,33 @@ func TestUsageViewAddsChartWhenSpaceAllows(t *testing.T) {
 		days: normalizeUsageDays(map[string]client.UsageEntry{
 			start.Format(time.RFC3339): {
 				Spend: decimal.RequireFromString("2.50"),
+				GroupedData: []client.UsageGrouped{{
+					GroupByValues: map[string]any{"model_used": "openai/gpt-5"},
+					Spend:         decimal.RequireFromString("2.50"),
+				}},
 			},
 		}, start),
 	}
 
-	withChart := state.view(76, 11)
+	withChart := state.view(76, 14)
 	withoutChart := state.view(76, 5)
 	lines := strings.Split(ansi.Strip(withChart), "\n")
 
 	assert.Contains(t, ansi.Strip(withChart), "1 Spend")
+	assert.Contains(t, ansi.Strip(withChart), "6 Model")
 	assert.Contains(t, ansi.Strip(withChart), "$5.00")
+	assert.Contains(t, ansi.Strip(withChart), "openai/gpt-5")
 	require.Greater(t, len(lines), 7)
-	assert.Empty(t, strings.TrimSpace(lines[6]))
+	assert.Empty(t, strings.TrimSpace(lines[6]), "cards are separated from chart controls")
+	assert.Empty(t, strings.TrimSpace(lines[len(lines)-2]), "legend is separated from the plot")
 	assert.Contains(t, withChart, "█")
-	assert.LessOrEqual(t, lipgloss.Height(withChart), 11)
+	assert.LessOrEqual(t, lipgloss.Height(withChart), 14)
 	assert.Contains(t, ansi.Strip(withoutChart), "SPEND")
+
+	state.refreshing = true
+	loading := state.view(76, 14)
+	assert.NotContains(t, ansi.Strip(loading), "Unknown")
+	assert.NotContains(t, ansi.Strip(loading), "openai/gpt-5")
+	assert.Contains(t, loading, "└", "the ungrouped chart remains visible while loading")
+	assert.Equal(t, lipgloss.Height(withChart), lipgloss.Height(loading))
 }
