@@ -193,7 +193,7 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 			if m.cursor < len(m.items)-1 {
 				m.cursor++
 			}
-		case " ", "space":
+		case "enter":
 			if m.canConfigure() {
 				m.wizard = integrationWizardState{open: true}
 				return m, m.loadModels
@@ -308,7 +308,7 @@ func (m integrationState) view(width, height int) string {
 		text.RenderFooterHintList(
 			t.Width(),
 			[2]string{"↑/↓", "move"},
-			[2]string{"space", "configure"},
+			[2]string{"enter", "configure"},
 			[2]string{"m", "toggle metric"},
 			[2]string{"g", "toggle group"},
 			[2]string{"r", "refresh"},
@@ -398,7 +398,7 @@ func (m integrationState) detail(width int) string {
 		lines = append(lines, theme.Bad.Render("Could not read status: "+selected.err.Error()))
 	}
 	if m.canConfigure() {
-		lines = append(lines, text.LineSeparator, theme.Key.Render("space")+" "+theme.Footer.Render("to configure"))
+		lines = append(lines, text.LineSeparator, theme.Key.Render("enter")+" "+theme.Footer.Render("to configure"))
 	}
 	if m.refreshing {
 		lines = append(lines, theme.Muted.Render("Refreshing…"))
