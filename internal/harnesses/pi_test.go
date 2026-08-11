@@ -56,7 +56,44 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 				"headers": {
 					"HTTP-Referer": "https://pi.dev",
 					"X-Title": "Pi"
-				}
+				},
+				"models": [
+					{"id": "anthropic/claude-fable-5"}
+				]
+			}
+		}
+	}`, string(models))
+}
+
+func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
+	config := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+	configDir := t.TempDir()
+	modelsPath := filepath.Join(configDir, "models.json")
+	harness := NewPiHarness(config, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "anthropic/claude-fable-5",
+	}))
+
+	models, err := os.ReadFile(modelsPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"providers": {
+			"requesty": {
+				"name": "Requesty",
+				"baseUrl": "https://router.requesty.ai",
+				"api": "anthropic-messages",
+				"apiKey": "my-api-key",
+				"headers": {
+					"HTTP-Referer": "https://pi.dev",
+					"X-Title": "Pi"
+				},
+				"models": [
+					{"id": "anthropic/claude-fable-5"}
+				]
 			}
 		}
 	}`, string(models))

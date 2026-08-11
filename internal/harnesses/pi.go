@@ -29,6 +29,11 @@ type piProviderConfig struct {
 	API     string            `json:"api"`
 	APIKey  string            `json:"apiKey"`
 	Headers map[string]string `json:"headers,omitempty"`
+	Models  []piModelConfig   `json:"models"`
+}
+
+type piModelConfig struct {
+	ID string `json:"id"`
 }
 
 type PiHarness struct {
@@ -104,10 +109,10 @@ func (p *PiHarness) Configure(opts ConfigureOptions) error {
 	return p.configureMerge(opts)
 }
 
-func (p *PiHarness) configureMerge(_ ConfigureOptions) error {
+func (p *PiHarness) configureMerge(opts ConfigureOptions) error {
 	modelsPath := p.modelsPath()
 
-	models, err := mergeJSONConfigFile(modelsPath, map[string]any{
+	models, err := mergeOrCreateJSONConfigFile(modelsPath, map[string]any{
 		"providers": map[string]any{
 			piProvider: map[string]any{
 				"name":    "Requesty",
@@ -117,6 +122,9 @@ func (p *PiHarness) configureMerge(_ ConfigureOptions) error {
 				"headers": map[string]any{
 					"HTTP-Referer": "https://pi.dev",
 					"X-Title":      "Pi",
+				},
+				"models": []any{
+					map[string]any{"id": opts.Model},
 				},
 			},
 		},
@@ -132,7 +140,7 @@ func (p *PiHarness) configureMerge(_ ConfigureOptions) error {
 	return nil
 }
 
-func (p *PiHarness) configureOverwrite(_ ConfigureOptions) error {
+func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 	models := piModels{
 		Providers: map[string]piProviderConfig{
 			piProvider: {
@@ -143,6 +151,9 @@ func (p *PiHarness) configureOverwrite(_ ConfigureOptions) error {
 				Headers: map[string]string{
 					"HTTP-Referer": "https://pi.dev",
 					"X-Title":      "Pi",
+				},
+				Models: []piModelConfig{
+					{ID: opts.Model},
 				},
 			},
 		},
