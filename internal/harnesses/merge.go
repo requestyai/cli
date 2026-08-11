@@ -71,9 +71,17 @@ func mergeTOMLConfigFile(path string, patch map[string]any) (map[string]any, err
 	return data, nil
 }
 
-func mergeYAMLConfigFile(path string, patch map[string]any) (map[string]any, error) {
+func mergeOrCreateYAMLConfigFile(path string, patch map[string]any) (map[string]any, error) {
+	return mergeYAMLConfigFileWithOptions(path, patch, mergeOptions{
+		AllowFileNotExists: true,
+	})
+}
+
+func mergeYAMLConfigFileWithOptions(path string, patch map[string]any, options mergeOptions) (map[string]any, error) {
 	dataBytes, err := os.ReadFile(path)
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) && options.AllowFileNotExists {
+		dataBytes = []byte("{}\n")
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 

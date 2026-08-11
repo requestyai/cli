@@ -123,7 +123,7 @@ func (h *HermesHarness) Configure(opts ConfigureOptions) error {
 func (h *HermesHarness) configureMerge(opts ConfigureOptions) error {
 	configPath := h.configPath()
 
-	settings, err := mergeYAMLConfigFile(configPath, map[string]any{
+	settings, err := mergeOrCreateYAMLConfigFile(configPath, map[string]any{
 		"model": map[string]any{
 			"default":  opts.Model,
 			"provider": hermesProvider,
