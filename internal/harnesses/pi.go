@@ -12,7 +12,8 @@ import (
 )
 
 const (
-	piProvider = "requesty"
+	piProvider             = "requesty"
+	piDefaultThinkingLevel = "medium"
 
 	// piAPI is the native Anthropic Messages format, which lets Requesty apply
 	// automatic prompt caching. It requires a base URL without the /v1 suffix.
@@ -21,6 +22,12 @@ const (
 
 type piModels struct {
 	Providers map[string]piProviderConfig `json:"providers"`
+}
+
+type piSettings struct {
+	DefaultProvider      string `json:"defaultProvider"`
+	DefaultModel         string `json:"defaultModel"`
+	DefaultThinkingLevel string `json:"defaultThinkingLevel"`
 }
 
 type piProviderConfig struct {
@@ -59,8 +66,8 @@ func (p *PiHarness) Name() string {
 
 func (p *PiHarness) Description() []string {
 	return []string{
-		"takes a backup of models.json",
-		"writes a models.json to route through Requesty",
+		"takes a backup of models.json and settings.json",
+		"writes models.json and settings.json to route through Requesty",
 	}
 }
 
@@ -74,14 +81,20 @@ func (p *PiHarness) Status() (Status, error) {
 	}
 
 	modelsPath := p.modelsPath()
-	status.Files = append(status.Files, modelsPath)
+	settingsPath := p.settingsPath()
+	status.Files = append(status.Files, modelsPath, settingsPath)
 
 	modelsExists, err := pathExists(modelsPath)
 	if err != nil {
 		return status, fmt.Errorf("failed to check file exists: %w", err)
 	}
 
-	if !modelsExists {
+	settingsExists, err := pathExists(settingsPath)
+	if err != nil {
+		return status, fmt.Errorf("failed to check file exists: %w", err)
+	}
+
+	if !modelsExists || !settingsExists {
 		status.Configured = false
 		return status, nil
 	}
@@ -96,7 +109,18 @@ func (p *PiHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
-	status.Configured = models.Providers[piProvider].BaseURL == p.config.RouterBaseURL
+	settingsBytes, err := os.ReadFile(settingsPath)
+	if err != nil {
+		return status, fmt.Errorf("failed to read settings file: %w", err)
+	}
+
+	var settings piSettings
+	if err := json.Unmarshal(settingsBytes, &settings); err != nil {
+		return status, fmt.Errorf("failed to unmarshal settings: %w", err)
+	}
+
+	status.Configured = models.Providers[piProvider].BaseURL == p.config.RouterBaseURL &&
+		settings.DefaultProvider == piProvider
 
 	return status, nil
 }
@@ -137,6 +161,20 @@ func (p *PiHarness) configureMerge(opts ConfigureOptions) error {
 		return fmt.Errorf("failed to write models file: %w", err)
 	}
 
+	settingsPath := p.settingsPath()
+	settings, err := mergeOrCreateJSONConfigFile(settingsPath, map[string]any{
+		"defaultProvider":      piProvider,
+		"defaultModel":         opts.Model,
+		"defaultThinkingLevel": piDefaultThinkingLevel,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to merge settings file: %w", err)
+	}
+
+	if err := backupAndWriteConfigFileAsJSON(settingsPath, &settings); err != nil {
+		return fmt.Errorf("failed to write settings file: %w", err)
+	}
+
 	return nil
 }
 
@@ -163,9 +201,23 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 		return fmt.Errorf("failed to write models file: %w", err)
 	}
 
+	settings := piSettings{
+		DefaultProvider:      piProvider,
+		DefaultModel:         opts.Model,
+		DefaultThinkingLevel: piDefaultThinkingLevel,
+	}
+
+	if err := backupAndWriteConfigFileAsJSON(p.settingsPath(), &settings); err != nil {
+		return fmt.Errorf("failed to write settings file: %w", err)
+	}
+
 	return nil
 }
 
 func (p *PiHarness) modelsPath() string {
 	return filepath.Join(p.configDir, "models.json")
+}
+
+func (p *PiHarness) settingsPath() string {
+	return filepath.Join(p.configDir, "settings.json")
 }

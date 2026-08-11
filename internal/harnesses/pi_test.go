@@ -19,10 +19,14 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 	// Simulate a machine with Pi installed but not integrated.
 	configDir := t.TempDir()
 	modelsPath := filepath.Join(configDir, "models.json")
+	settingsPath := filepath.Join(configDir, "settings.json")
 	require.NoError(t, os.WriteFile(modelsPath, []byte(`{
 		"providers": {
 			"other": {"name": "Other provider"}
 		}
+	}`), 0o600))
+	require.NoError(t, os.WriteFile(settingsPath, []byte(`{
+		"theme": "dark"
 	}`), 0o600))
 
 	harness := NewPiHarness(config, configDir)
@@ -30,6 +34,7 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 	status, err := harness.Status()
 	require.NoError(t, err)
 	assert.Contains(t, status.Files, modelsPath)
+	assert.Contains(t, status.Files, settingsPath)
 	assert.Equal(t, false, status.Configured)
 
 	// Configure the machine.
@@ -63,6 +68,15 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 			}
 		}
 	}`, string(models))
+
+	settings, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"theme": "dark",
+		"defaultProvider": "requesty",
+		"defaultModel": "anthropic/claude-fable-5",
+		"defaultThinkingLevel": "medium"
+	}`, string(settings))
 }
 
 func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
@@ -72,6 +86,7 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	}
 	configDir := t.TempDir()
 	modelsPath := filepath.Join(configDir, "models.json")
+	settingsPath := filepath.Join(configDir, "settings.json")
 	harness := NewPiHarness(config, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
@@ -97,6 +112,14 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 			}
 		}
 	}`, string(models))
+
+	settings, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"defaultProvider": "requesty",
+		"defaultModel": "anthropic/claude-fable-5",
+		"defaultThinkingLevel": "medium"
+	}`, string(settings))
 }
 
 func TestPiHarnessDefaultConfigDir(t *testing.T) {
