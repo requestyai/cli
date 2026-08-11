@@ -116,6 +116,45 @@ func TestHermesHarnessUpdatesExistingProvider(t *testing.T) {
 	assert.Equal(t, true, status.Configured)
 }
 
+func TestHermesHarnessConfigureCreatesMissingConfig(t *testing.T) {
+	config := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "config.yaml")
+	harness := NewHermesHarness(config, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "anthropic/claude-fable-5",
+	}))
+
+	configBytes, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+
+	settings := make(map[string]any)
+	require.NoError(t, yaml.Unmarshal(configBytes, &settings))
+	assert.Equal(t, map[string]any{
+		"model": map[string]any{
+			"default":  "anthropic/claude-fable-5",
+			"provider": "requesty",
+			"default_headers": map[string]any{
+				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
+				"X-Origin-Title": "Hermes",
+			},
+		},
+		"custom_providers": []any{
+			map[string]any{
+				"name":     "requesty",
+				"base_url": "https://router.requesty.ai",
+				"api_key":  "my-api-key",
+				"api_mode": "anthropic_messages",
+			},
+		},
+	}, settings)
+}
+
 func TestHermesHarnessDefaultConfigDir(t *testing.T) {
 	homePath, err := os.UserHomeDir()
 	require.NoError(t, err)
