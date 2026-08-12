@@ -53,9 +53,23 @@ func mergeJSONConfigFileWithOptions(path string, patch map[string]any, options m
 	return data, nil
 }
 
+func mergeOrCreateTOMLConfigFile(path string, patch map[string]any) (map[string]any, error) {
+	return mergeTOMLConfigFileWithOptions(path, patch, mergeOptions{
+		AllowFileNotExists: true,
+	})
+}
+
 func mergeTOMLConfigFile(path string, patch map[string]any) (map[string]any, error) {
+	return mergeTOMLConfigFileWithOptions(path, patch, mergeOptions{
+		AllowFileNotExists: false,
+	})
+}
+
+func mergeTOMLConfigFileWithOptions(path string, patch map[string]any, options mergeOptions) (map[string]any, error) {
 	dataBytes, err := os.ReadFile(path)
-	if err != nil {
+	if errors.Is(err, os.ErrNotExist) && options.AllowFileNotExists {
+		dataBytes = []byte{}
+	} else if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
