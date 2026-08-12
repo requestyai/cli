@@ -40,6 +40,30 @@ func TestClaudeHarnessRoundTrip(t *testing.T) {
 	assert.Equal(t, true, status.Configured)
 }
 
+func TestClaudeHarnessConfigureCreatesMissingConfig(t *testing.T) {
+	config := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+	configDir := t.TempDir()
+	settingsPath := filepath.Join(configDir, "settings.json")
+	harness := NewClaudeHarness(config, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "anthropic/claude-fable-5",
+	}))
+
+	settings, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"env": {
+			"ANTHROPIC_BASE_URL": "https://router.requesty.ai",
+			"ANTHROPIC_AUTH_TOKEN": "my-api-key",
+			"ANTHROPIC_MODEL": "anthropic/claude-fable-5"
+		}
+	}`, string(settings))
+}
+
 func TestClaudeHarnessDefaultConfigDir(t *testing.T) {
 	homePath, err := os.UserHomeDir()
 	require.NoError(t, err)

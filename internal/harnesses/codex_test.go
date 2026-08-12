@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/pelletier/go-toml/v2"
 	"github.com/requestyai/cli/internal/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,6 +42,36 @@ func TestCodexIntegrationRoundTrip(t *testing.T) {
 	status, err = harness.Status()
 	require.NoError(t, err)
 	assert.Equal(t, true, status.Configured)
+}
+
+func TestCodexHarnessConfigureCreatesMissingConfig(t *testing.T) {
+	config := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "config.toml")
+	authPath := filepath.Join(configDir, "auth.json")
+	harness := NewCodexHarness(config, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "openai-responses/gpt-5.5",
+	}))
+
+	configBytes, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	var parsedConfig codexConfig
+	require.NoError(t, toml.Unmarshal(configBytes, &parsedConfig))
+	assert.Equal(t, "openai-responses/gpt-5.5", parsedConfig.Model)
+	assert.Equal(t, codexModelProvider, parsedConfig.ModelProvider)
+	assert.Equal(t, "https://router.requesty.ai/v1", parsedConfig.ModelProviders[codexModelProvider].BaseURL)
+
+	auth, err := os.ReadFile(authPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"auth_mode": "apikey",
+		"OPENAI_API_KEY": "my-api-key"
+	}`, string(auth))
 }
 
 func TestCodexHarnessDefaultConfigDir(t *testing.T) {

@@ -125,7 +125,7 @@ func (c *CodexHarness) Configure(opts ConfigureOptions) error {
 func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 	configPath := c.configPath()
 
-	config, err := mergeTOMLConfigFile(configPath, map[string]any{
+	config, err := mergeOrCreateTOMLConfigFile(configPath, map[string]any{
 		"model":                              opts.Model,
 		"model_provider":                     codexModelProvider,
 		"model_reasoning_effort":             "high",
@@ -148,7 +148,7 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 
 	authPath := c.authPath()
 
-	auth, err := mergeJSONConfigFile(authPath, map[string]any{
+	auth, err := mergeOrCreateJSONConfigFile(authPath, map[string]any{
 		"auth_mode":      "apikey",
 		"OPENAI_API_KEY": c.config.APIKey,
 	})

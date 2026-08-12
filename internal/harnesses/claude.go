@@ -101,7 +101,7 @@ func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
 func (c *ClaudeHarness) configureMerge(opts ConfigureOptions) error {
 	settingsPath := c.settingsPath()
 
-	settings, err := mergeJSONConfigFile(settingsPath, map[string]any{
+	settings, err := mergeOrCreateJSONConfigFile(settingsPath, map[string]any{
 		"env": map[string]any{
 			"ANTHROPIC_BASE_URL":   c.config.RouterBaseURL,
 			"ANTHROPIC_AUTH_TOKEN": c.config.APIKey,
