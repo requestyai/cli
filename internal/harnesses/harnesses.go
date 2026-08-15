@@ -50,11 +50,17 @@ func Harnesses(config config.Config) ([]Harness, error) {
 		return nil, fmt.Errorf("failed to get Hermes config directory: %w", err)
 	}
 
+	deepseekConfigDir, err := DefaultConfigDirDeepSeek()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get DeepSeek Harness config directory: %w", err)
+	}
+
 	return []Harness{
 		NewClaudeHarness(config, claudeCodeConfigDir),
 		NewCodexHarness(config, codexConfigDir),
 		NewOpenCodeHarness(config, openCodeConfigDir),
 		NewPiHarness(config, piConfigDir),
 		NewHermesHarness(config, hermesConfigDir),
+		NewDeepSeekHarness(config, deepseekConfigDir),
 	}, nil
 }
