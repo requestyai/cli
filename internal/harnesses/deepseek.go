@@ -55,6 +55,16 @@ type deepseekModelConfig struct {
 	ID string `yaml:"id"`
 }
 
+// deepseekRawSettings reads the model entries without dropping fields the
+// harness writes for them, such as display names and input capacities.
+type deepseekRawSettings struct {
+	PiAI struct {
+		Providers map[string]struct {
+			Models []map[string]any `yaml:"models"`
+		} `yaml:"providers"`
+	} `yaml:"llm-pi-ai"`
+}
+
 type DeepSeekHarness struct {
 	config    config.Config
 	configDir string
@@ -155,6 +165,11 @@ func (d *DeepSeekHarness) Configure(opts ConfigureOptions) error {
 func (d *DeepSeekHarness) configureMerge(opts ConfigureOptions) error {
 	settingsPath := d.settingsPath()
 
+	models, err := d.mergedModels(settingsPath, opts.Model)
+	if err != nil {
+		return err
+	}
+
 	settings, err := mergeOrCreateYAMLConfigFile(settingsPath, map[string]any{
 		"agent-default-model": map[string]any{
 			"provider": deepseekProvider,
@@ -173,9 +188,7 @@ func (d *DeepSeekHarness) configureMerge(opts ConfigureOptions) error {
 						"HTTP-Referer": "https://requesty.ai",
 						"X-Title":      "DeepSeek Harness",
 					},
-					"models": []any{
-						map[string]any{"id": opts.Model},
-					},
+					"models": models,
 				},
 			},
 		},
@@ -231,6 +244,47 @@ func (d *DeepSeekHarness) configureOverwrite(opts ConfigureOptions) error {
 	}
 
 	return nil
+}
+
+// mergedModels keeps the model entries already listed for the Requesty
+// provider, including any the user added through the harness itself, and adds
+// the selected model when it is missing. The harness needs an explicit catalog
+// because a custom provider ships none, so the list cannot be dropped, and a
+// later run must not discard models the user picked in the harness.
+func (d *DeepSeekHarness) mergedModels(settingsPath, model string) ([]any, error) {
+	settingsBytes, err := os.ReadFile(settingsPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return []any{map[string]any{"id": model}}, nil
+	} else if err != nil {
+		return nil, fmt.Errorf("failed to read settings file: %w", err)
+	}
+
+	var settings deepseekRawSettings
+	if err := yaml.Unmarshal(settingsBytes, &settings); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal settings file: %w", err)
+	}
+
+	models := make([]any, 0, len(settings.PiAI.Providers[deepseekProvider].Models)+1)
+	selected := false
+
+	for _, entry := range settings.PiAI.Providers[deepseekProvider].Models {
+		id, ok := entry["id"].(string)
+		if !ok || id == "" {
+			continue
+		}
+
+		if id == model {
+			selected = true
+		}
+
+		models = append(models, entry)
+	}
+
+	if !selected {
+		models = append(models, map[string]any{"id": model})
+	}
+
+	return models, nil
 }
 
 // writeCredentials stores the API key in the harness credentials file, which

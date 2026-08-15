@@ -117,6 +117,11 @@ those harnesses.
 Where a harness supports custom headers, the CLI also sets an `X-Title` header naming the tool, so
 the [Requesty dashboard](https://app.requesty.ai/analytics) can break spend down per harness.
 
+DeepSeek Harness needs the models of a custom provider listed in its own settings, so the CLI
+writes the model you selected. You can add more Requesty models later inside the harness, under
+Settings, Models, Requesty, either with `Fetch available models` or with `Add model`. In merge mode
+a later run of the CLI keeps those entries and only adds the model you selected if it is missing.
+
 ## Usage
 
 Above the harness list, the CLI shows spend, requests and tokens for the last 30 days for the key
