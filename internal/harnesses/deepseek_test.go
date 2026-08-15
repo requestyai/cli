@@ -179,6 +179,67 @@ func TestDeepSeekHarnessConfigureOverwriteReplacesSettings(t *testing.T) {
 	assert.Equal(t, true, status.Configured)
 }
 
+func TestDeepSeekHarnessConfigureKeepsModelsAddedInHarness(t *testing.T) {
+	config := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+
+	// Simulate a user who added models through the harness settings UI after a
+	// first run of the CLI.
+	configDir := t.TempDir()
+	settingsPath := filepath.Join(configDir, "settings.yaml")
+	require.NoError(t, os.WriteFile(settingsPath, []byte(`llm-pi-ai:
+  providers:
+    requesty:
+      models:
+        - id: deepseek/deepseek-v4-pro-0813
+        - id: anthropic/claude-sonnet-4-6
+          name: Claude Sonnet 4.6
+          input:
+            - text
+            - image
+`), 0o600))
+
+	harness := NewDeepSeekHarness(config, configDir)
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "openai/gpt-5.4",
+	}))
+
+	settingsBytes, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+
+	settings := make(map[string]any)
+	require.NoError(t, yaml.Unmarshal(settingsBytes, &settings))
+
+	providers := settings["llm-pi-ai"].(map[string]any)["providers"].(map[string]any)
+	provider := providers["requesty"].(map[string]any)
+	assert.Equal(t, []any{
+		map[string]any{"id": "deepseek/deepseek-v4-pro-0813"},
+		map[string]any{
+			"id":    "anthropic/claude-sonnet-4-6",
+			"name":  "Claude Sonnet 4.6",
+			"input": []any{"text", "image"},
+		},
+		map[string]any{"id": "openai/gpt-5.4"},
+	}, provider["models"])
+
+	// A second run with an already listed model leaves the list unchanged.
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "openai/gpt-5.4",
+	}))
+
+	settingsBytes, err = os.ReadFile(settingsPath)
+	require.NoError(t, err)
+
+	settings = make(map[string]any)
+	require.NoError(t, yaml.Unmarshal(settingsBytes, &settings))
+
+	providers = settings["llm-pi-ai"].(map[string]any)["providers"].(map[string]any)
+	provider = providers["requesty"].(map[string]any)
+	assert.Len(t, provider["models"], 3)
+}
+
 func TestDeepSeekHarnessDefaultConfigDir(t *testing.T) {
 	homePath, err := os.UserHomeDir()
 	require.NoError(t, err)
