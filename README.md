@@ -2,7 +2,7 @@
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/requestyai/cli/blob/main/LICENSE)
 
-> Point Claude Code, Codex, OpenCode, Pi and Hermes at [Requesty](https://requesty.ai) from one terminal app.
+> Point Claude Code, Codex, OpenCode, Pi, Hermes and DeepSeek Harness at [Requesty](https://requesty.ai) from one terminal app.
 
 `requesty` finds the AI coding harnesses installed on your machine and rewrites their own
 configuration so every request goes through the Requesty gateway. You get 300+ models behind a
@@ -68,7 +68,7 @@ Harnesses found on your `PATH` are listed first. The ones that are not installed
 cannot be configured. The footer always shows the keys available on the current screen.
 
 ```text
-  harnesses on this machine                    0 of 5 routing through requesty
+  harnesses on this machine                    0 of 6 routing through requesty
 
         HARNESS             CONFIG                                  STATUS
   ────────────────────────────────────────────────────────────────────────────
@@ -77,6 +77,7 @@ cannot be configured. The footer always shows the keys available on the current 
     [ ] OpenCode            /home/you/.config/opencode/opencode.jsoninactive
     [ ] Pi                  /home/you/.pi/agent/models.json         inactive
     [ ] Hermes              /home/you/.hermes/config.yaml           inactive
+    [ ] DeepSeek Harness    /home/you/.dsh/settings.yaml            inactive
 
   ╭──────────────────────────────────────────────────────────────────────────╮
   │ Claude Code                              /home/you/.claude/settings.json │
@@ -95,8 +96,8 @@ the files, the row flips to `[✓] active`, and the header count goes up.
 
 **Restart the harness**
 
-Harnesses read their configuration at startup. Restart `claude`, `codex`, `opencode`, `pi` or
-`hermes` and it is talking to Requesty.
+Harnesses read their configuration at startup. Restart `claude`, `codex`, `opencode`, `pi`,
+`hermes` or `dsh` and it is talking to Requesty.
 
 ## Supported harnesses
 
@@ -107,6 +108,7 @@ Harnesses read their configuration at startup. Restart `claude`, `codex`, `openc
 | [OpenCode](https://docs.requesty.ai/integrations/opencode) | `opencode` on `PATH` | `~/.config/opencode/opencode.json` | A `requesty` provider on `.../v1` plus the model as `requesty/<model>` |
 | [Pi](https://docs.requesty.ai/integrations/pi) | `pi` on `PATH` | `~/.pi/agent/models.json` | A `requesty` provider using the native Anthropic Messages API |
 | [Hermes](https://docs.requesty.ai/integrations/hermes) | `hermes` on `PATH` | `~/.hermes/config.yaml` | A `requesty` entry in `custom_providers` and `model.default` |
+| [DeepSeek Harness](https://docs.requesty.ai/integrations/deepseek-harness) | `dsh` on `PATH` | `$DSH_HOME/settings.yaml`, `$DSH_HOME/.credentials.yaml` (`~/.dsh` by default) | A `requesty` provider on `.../v1` under `llm-pi-ai`, the selected model as `agent-default-model`, and the key stored as `REQUESTY_API_KEY` |
 
 Pi and Hermes are configured against the native Anthropic Messages format, which is what lets
 Requesty apply [automatic prompt caching](https://docs.requesty.ai/features/auto-caching) to
