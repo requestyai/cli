@@ -23,8 +23,8 @@ func Run() error {
 // environment is everything the commands need from the outside world, kept
 // behind function fields so tests can stand in for the gateway and the UI.
 type environment struct {
-	config config.Config
-	client *client.Client
+	config      config.Config
+	apiv2Client *client.Client
 }
 
 func newEnvironment() (environment, error) {
@@ -34,8 +34,8 @@ func newEnvironment() (environment, error) {
 	}
 
 	return environment{
-		config: cfg,
-		client: client.New(cfg),
+		config:      cfg,
+		apiv2Client: client.New(cfg),
 	}, nil
 }
 

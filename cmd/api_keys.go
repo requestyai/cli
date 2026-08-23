@@ -58,7 +58,7 @@ func newAPIKeysListCommand(env environment) *cobra.Command {
 		Short: "List the API keys in your organization",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			keys, err := env.client.APIKeys(cmd.Context())
+			keys, err := env.apiv2Client.APIKeys(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -102,7 +102,7 @@ func newAPIKeysShowCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			key, err := env.client.APIKey(cmd.Context(), id)
+			key, err := env.apiv2Client.APIKey(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
@@ -168,7 +168,7 @@ func newAPIKeysCreateCommand(env environment) *cobra.Command {
 			}
 			input.Permissions = permissions
 
-			created, err := env.client.CreateAPIKey(cmd.Context(), input)
+			created, err := env.apiv2Client.CreateAPIKey(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -234,7 +234,7 @@ func newAPIKeysSetLimitCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.client.UpdateAPIKeyLimit(cmd.Context(), id, limit); err != nil {
+			if err := env.apiv2Client.UpdateAPIKeyLimit(cmd.Context(), id, limit); err != nil {
 				return err
 			}
 
@@ -274,7 +274,7 @@ func newAPIKeysSetLabelsCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.client.UpdateAPIKeyLabels(cmd.Context(), id, labels); err != nil {
+			if err := env.apiv2Client.UpdateAPIKeyLabels(cmd.Context(), id, labels); err != nil {
 				return err
 			}
 
@@ -305,7 +305,7 @@ func newAPIKeysClearLabelsCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.client.UpdateAPIKeyLabels(cmd.Context(), id, nil); err != nil {
+			if err := env.apiv2Client.UpdateAPIKeyLabels(cmd.Context(), id, nil); err != nil {
 				return err
 			}
 
@@ -337,7 +337,7 @@ func newAPIKeysSetExpiryCommand(env environment) *cobra.Command {
 				expiresAt = &parsed
 			}
 
-			if err := env.client.UpdateAPIKeyExpiry(cmd.Context(), id, expiresAt); err != nil {
+			if err := env.apiv2Client.UpdateAPIKeyExpiry(cmd.Context(), id, expiresAt); err != nil {
 				return err
 			}
 
@@ -380,7 +380,7 @@ func newAPIKeysDeleteCommand(env environment) *cobra.Command {
 				}
 			}
 
-			if err := env.client.DeleteAPIKey(cmd.Context(), id); err != nil {
+			if err := env.apiv2Client.DeleteAPIKey(cmd.Context(), id); err != nil {
 				return err
 			}
 
