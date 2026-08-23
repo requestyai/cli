@@ -1,16 +1,14 @@
 package cmd
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/requestyai/cli/internal/client"
-	"github.com/shopspring/decimal"
+	"github.com/requestyai/cli/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -25,9 +23,6 @@ const (
 	apiKeyCompletionsPermissionFlag = "completions-permission"
 	apiKeyYesFlag                   = "yes"
 )
-
-// neverExpires is the expiry to pass for a key that should keep working.
-const neverExpires = "never"
 
 func newAPIKeysCommand(env environment) *cobra.Command {
 	cmd := &cobra.Command{
@@ -97,7 +92,7 @@ func newAPIKeysShowCommand(env environment) *cobra.Command {
 			"works even without manage permission.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
+			id, err := util.ParseID(args[0])
 			if err != nil {
 				return err
 			}
@@ -147,7 +142,7 @@ func newAPIKeysCreateCommand(env environment) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				limit, err := parseMoney("--"+apiKeyMonthlyLimitFlag, raw)
+				limit, err := util.ParseMoney("--"+apiKeyMonthlyLimitFlag, raw)
 				if err != nil {
 					return err
 				}
@@ -162,7 +157,7 @@ func newAPIKeysCreateCommand(env environment) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			permissions, err := parsePermissions(manage, completions)
+			permissions, err := util.ParsePermissions(manage, completions)
 			if err != nil {
 				return err
 			}
@@ -224,12 +219,12 @@ func newAPIKeysSetLimitCommand(env environment) *cobra.Command {
 			"The amount is in dollars, for example 100 or 49.99. Pass 0 to remove the cap.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
+			id, err := util.ParseID(args[0])
 			if err != nil {
 				return err
 			}
 
-			limit, err := parseMoney("amount", args[1])
+			limit, err := util.ParseMoney("amount", args[1])
 			if err != nil {
 				return err
 			}
@@ -264,12 +259,12 @@ func newAPIKeysSetLabelsCommand(env environment) *cobra.Command {
 			}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
+			id, err := util.ParseID(args[0])
 			if err != nil {
 				return err
 			}
 
-			labels, err := parseLabels(args[1:])
+			labels, err := util.ParseLabels(args[1:])
 			if err != nil {
 				return err
 			}
@@ -300,7 +295,7 @@ func newAPIKeysClearLabelsCommand(env environment) *cobra.Command {
 		Short: "Remove every label from an API key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
+			id, err := util.ParseID(args[0])
 			if err != nil {
 				return err
 			}
@@ -316,21 +311,21 @@ func newAPIKeysClearLabelsCommand(env environment) *cobra.Command {
 
 func newAPIKeysSetExpiryCommand(env environment) *cobra.Command {
 	return &cobra.Command{
-		Use:   "expiry <id> <time|" + neverExpires + ">",
+		Use:   "expiry <id> <time|" + util.NeverExpires + ">",
 		Short: "Set when an API key stops working",
 		Long: "Set when an API key stops working.\n\n" +
-			"The time is RFC3339, for example 2026-12-31T23:59:59Z. Pass " + neverExpires + " to make\n" +
+			"The time is RFC3339, for example 2026-12-31T23:59:59Z. Pass " + util.NeverExpires + " to make\n" +
 			"the key non-expiring. A key that has already expired cannot be revived.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
+			id, err := util.ParseID(args[0])
 			if err != nil {
 				return err
 			}
 
 			var expiresAt *time.Time
-			if !strings.EqualFold(strings.TrimSpace(args[1]), neverExpires) {
-				parsed, err := parseTime(args[1])
+			if !strings.EqualFold(strings.TrimSpace(args[1]), util.NeverExpires) {
+				parsed, err := util.ParseTime(args[1])
 				if err != nil {
 					return err
 				}
@@ -359,7 +354,7 @@ func newAPIKeysDeleteCommand(env environment) *cobra.Command {
 			"Deletion is permanent, and every request made with the key fails from then on.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseID(args[0])
+			id, err := util.ParseID(args[0])
 			if err != nil {
 				return err
 			}
@@ -370,7 +365,11 @@ func newAPIKeysDeleteCommand(env environment) *cobra.Command {
 			}
 
 			if !skipPrompt {
-				confirmed, err := confirm(cmd, fmt.Sprintf("Delete API key %s? This cannot be undone [y/N]: ", id))
+				confirmed, err := util.Confirm(
+					cmd.InOrStdin(),
+					cmd.OutOrStdout(),
+					fmt.Sprintf("Delete API key %s? This cannot be undone [y/N]: ", id),
+				)
 				if err != nil {
 					return err
 				}
@@ -409,102 +408,4 @@ func reportUpdate(cmd *cobra.Command, id, field, message string) error {
 	_, err := fmt.Fprintln(out, message)
 
 	return err
-}
-
-// confirm asks the question and treats anything but yes as no.
-func confirm(cmd *cobra.Command, question string) (bool, error) {
-	if _, err := fmt.Fprint(cmd.OutOrStdout(), question); err != nil {
-		return false, err
-	}
-
-	answer, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return false, fmt.Errorf("failed to read confirmation: %w", err)
-	}
-
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "y", "yes":
-		return true, nil
-	default:
-		return false, nil
-	}
-}
-
-// parseID keeps a blank identifier from being sent as a request for the whole
-// collection.
-func parseID(value string) (string, error) {
-	id := strings.TrimSpace(value)
-	if id == "" {
-		return "", errors.New("missing api key id")
-	}
-
-	return id, nil
-}
-
-// parsePermissions builds the permission block, which the API only takes with
-// both halves set, so asking for one means saying what the other is too.
-func parsePermissions(manage, completions string) (*client.APIKeyPermissions, error) {
-	if manage == "" && completions == "" {
-		return nil, nil
-	}
-	if manage == "" || completions == "" {
-		return nil, fmt.Errorf("set both --%s and --%s, or neither", apiKeyManagePermissionFlag, apiKeyCompletionsPermissionFlag)
-	}
-
-	parsedManage, err := parsePermission(apiKeyManagePermissionFlag, manage)
-	if err != nil {
-		return nil, err
-	}
-	parsedCompletions, err := parsePermission(apiKeyCompletionsPermissionFlag, completions)
-	if err != nil {
-		return nil, err
-	}
-
-	return &client.APIKeyPermissions{Manage: parsedManage, Completions: parsedCompletions}, nil
-}
-
-func parsePermission(flag, value string) (client.APIKeyPermission, error) {
-	switch permission := client.APIKeyPermission(value); permission {
-	case client.APIKeyPermissionNone, client.APIKeyPermissionRead, client.APIKeyPermissionWrite:
-		return permission, nil
-	default:
-		return "", fmt.Errorf("invalid --%s %q: want none, read or write", flag, value)
-	}
-}
-
-func parseLabels(pairs []string) (map[string]string, error) {
-	labels := make(map[string]string, len(pairs))
-	for _, pair := range pairs {
-		key, value, found := strings.Cut(pair, "=")
-		key = strings.TrimSpace(key)
-		if !found || key == "" {
-			return nil, fmt.Errorf("invalid label %q: want key=value", pair)
-		}
-		labels[key] = value
-	}
-
-	return labels, nil
-}
-
-func parseTime(value string) (time.Time, error) {
-	parsed, err := time.Parse(time.RFC3339, value)
-	if err != nil {
-		return time.Time{}, fmt.Errorf("invalid expiry %q: want %s or an RFC3339 time such as 2026-12-31T23:59:59Z",
-			value, neverExpires)
-	}
-
-	return parsed, nil
-}
-
-// parseMoney reads an amount, named for whichever flag or argument it came from.
-func parseMoney(name, value string) (decimal.Decimal, error) {
-	amount, err := decimal.NewFromString(strings.TrimPrefix(strings.TrimSpace(value), "$"))
-	if err != nil {
-		return decimal.Decimal{}, fmt.Errorf("invalid %s %q: want an amount such as 100 or 49.99", name, value)
-	}
-	if amount.IsNegative() {
-		return decimal.Decimal{}, fmt.Errorf("invalid %s %q: want zero or more", name, value)
-	}
-
-	return amount, nil
 }
