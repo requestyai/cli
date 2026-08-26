@@ -10,13 +10,14 @@ on:
         required: true
         type: number
 
-permissions:
-  pull-requests: write
-  issues: write
+permissions: {}
 
 jobs:
   cost:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      issues: write
     steps:
       - uses: actions/github-script@v7
         env:

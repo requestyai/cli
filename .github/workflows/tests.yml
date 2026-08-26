@@ -6,8 +6,7 @@ on:
     branches:
       - main
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -17,6 +16,8 @@ jobs:
   unit-tests:
     name: Unit tests
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Check out code
