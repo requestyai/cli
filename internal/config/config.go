@@ -71,11 +71,21 @@ func Save(config Config) error {
 	return nil
 }
 
-func configPath() (string, error) {
+// Dir is where the CLI keeps everything it owns, settings included.
+func Dir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to find home directory: %w", err)
 	}
 
-	return filepath.Join(home, dirName, fileName), nil
+	return filepath.Join(home, dirName), nil
+}
+
+func configPath() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(dir, fileName), nil
 }
