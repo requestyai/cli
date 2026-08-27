@@ -159,6 +159,65 @@ func TestAttributionKeepsHeadersAddedByHand(t *testing.T) {
 	assert.Equal(t, "!echo repo", models.Providers[piProvider].Headers["X-Requesty-Repo"])
 }
 
+// TestOptingOutRemovesAttributionHeaders is what makes attribution something a
+// user can take back: configuring again without it has to leave none of the
+// headers an earlier run wrote, in a merge as well as an overwrite.
+func TestOptingOutRemovesAttributionHeaders(t *testing.T) {
+	eachConfigurePath(t, func(t *testing.T, overwrite bool) {
+		configDir := configureWithAttribution(t, func(config config.Config, dir string) Harness {
+			return NewCodexHarness(config, dir)
+		}, overwrite)
+
+		harness := NewCodexHarness(attributionTestConfig(), configDir)
+		require.NoError(t, harness.Configure(ConfigureOptions{
+			Model:     attributionTestModel,
+			Overwrite: overwrite,
+		}))
+
+		configPath := filepath.Join(configDir, "config.toml")
+
+		var parsed codexConfig
+		readTOMLFile(t, configPath, &parsed)
+		provider := parsed.ModelProviders[codexModelProvider]
+		assert.Equal(t, map[string]string{"X-Title": "OpenAI Codex"}, provider.HTTPHeaders)
+		assert.Empty(t, provider.EnvHTTPHeaders)
+
+		contents, err := os.ReadFile(configPath)
+		require.NoError(t, err)
+		assert.NotContains(t, string(contents), "X-Requesty")
+		assert.NotContains(t, string(contents), "env_http_headers")
+	})
+}
+
+// TestOptingOutKeepsHeadersAddedByHand pins that taking the attribution headers
+// out of a merged config takes only those, and not a header a user put there.
+func TestOptingOutKeepsHeadersAddedByHand(t *testing.T) {
+	configDir := t.TempDir()
+	modelsPath := filepath.Join(configDir, "models.json")
+	require.NoError(t, os.WriteFile(modelsPath, []byte(`{
+		"providers": {
+			"requesty": {
+				"headers": {"X-Team": "platform"}
+			}
+		}
+	}`), 0o600))
+
+	harness := NewPiHarness(attributionTestConfig(), configDir)
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model:       attributionTestModel,
+		Attribution: attributionSet(),
+	}))
+	require.NoError(t, harness.Configure(ConfigureOptions{Model: attributionTestModel}))
+
+	var models piModels
+	readJSONFile(t, modelsPath, &models)
+	assert.Equal(t, map[string]string{
+		"HTTP-Referer": "https://pi.dev",
+		"X-Title":      "Pi",
+		"X-Team":       "platform",
+	}, models.Providers[piProvider].Headers)
+}
+
 // eachConfigurePath runs the test against both ways a harness writes its config,
 // as the headers have to land the same way whether the file was merged into or
 // replaced.

@@ -199,21 +199,16 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 	return nil
 }
 
-// provider describes the Requesty entry Codex routes through. The environment
-// header table is left out when there is nothing to name, so a user who did not
-// opt in keeps a config file without an empty table in it.
+// provider describes the Requesty entry Codex routes through. Both header tables
+// are patched even when empty, so attribution headers written by an earlier run
+// are taken back out; a table left with nothing in it is dropped by the merge.
 func (c *CodexHarness) provider(opts ConfigureOptions) map[string]any {
-	provider := map[string]any{
-		"name":         "Requesty",
-		"base_url":     fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
-		"http_headers": headerPatch(c.headers(opts)),
+	return map[string]any{
+		"name":             "Requesty",
+		"base_url":         fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
+		"http_headers":     headerPatch(c.headers(opts)),
+		"env_http_headers": headerPatch(c.envHeaders(opts)),
 	}
-
-	if envHeaders := c.envHeaders(opts); len(envHeaders) > 0 {
-		provider["env_http_headers"] = headerPatch(envHeaders)
-	}
-
-	return provider
 }
 
 // headers name Codex to Requesty and carry the attribution dimensions it can be

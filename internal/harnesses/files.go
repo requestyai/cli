@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/requestyai/cli/internal/attribution"
 	"github.com/requestyai/cli/internal/fileio"
 	"gopkg.in/yaml.v3"
 )
@@ -48,11 +49,17 @@ func pathExists(path string) (bool, error) {
 	return fileio.Exists(path)
 }
 
-// headerPatch turns a header map into the shape a config patch needs. A patch
-// merges recursively only into a map[string]any, so anything else here would
-// replace the headers a user added by hand instead of joining them.
+// headerPatch turns a header map into the shape a config patch needs: set what is
+// asked for, and remove every attribution header that is not, so a user who turns
+// attribution back off stops sending the headers an earlier run wrote.
+//
+// A patch merges recursively only into a map[string]any, so anything else here
+// would replace the headers a user added by hand instead of joining them.
 func headerPatch(headers map[string]string) map[string]any {
-	patch := make(map[string]any, len(headers))
+	patch := make(map[string]any, len(headers)+len(attribution.Headers()))
+	for _, name := range attribution.Headers() {
+		patch[name] = removal{}
+	}
 	for name, value := range headers {
 		patch[name] = value
 	}

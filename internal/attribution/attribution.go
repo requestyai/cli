@@ -122,6 +122,13 @@ func New() (Set, error) {
 	}, nil
 }
 
+// Headers names every header attribution can write, whether or not the current
+// set carries it. A config written again is stripped of the ones it is no longer
+// asked for, so turning attribution off actually stops them being sent.
+func Headers() []string {
+	return []string{headerRepo, headerBranch, headerUser}
+}
+
 // Static adds the dimensions the CLI already resolved to headers, for harnesses
 // that can only be given fixed values.
 func (s Set) Static(headers map[string]string) map[string]string {

@@ -111,10 +111,19 @@ func mergeYAMLConfigFileWithOptions(path string, patch map[string]any, options m
 	return data, nil
 }
 
+// removal marks a patch key the merge should delete rather than set, which is how
+// a value the CLI wrote on an earlier run is taken back out of a config.
+type removal struct{}
+
 // mergePatch recursively applies patch values while preserving unrelated fields.
 // It rejects nested patches when the existing value is not an object or table.
 func mergePatch(destination, patch map[string]any, path string) error {
 	for key, patchValue := range patch {
+		if _, isRemoval := patchValue.(removal); isRemoval {
+			delete(destination, key)
+			continue
+		}
+
 		patchMap, isMap := patchValue.(map[string]any)
 		if !isMap {
 			destination[key] = patchValue
@@ -128,8 +137,7 @@ func mergePatch(destination, patch map[string]any, path string) error {
 
 		destinationValue, exists := destination[key]
 		if !exists || destinationValue == nil {
-			destination[key] = patchMap
-			continue
+			destinationValue = make(map[string]any)
 		}
 
 		destinationMap, ok := destinationValue.(map[string]any)
@@ -139,6 +147,15 @@ func mergePatch(destination, patch map[string]any, path string) error {
 		if err := mergePatch(destinationMap, patchMap, fieldPath); err != nil {
 			return err
 		}
+
+		// A patch of nothing but removals leaves an object with nothing in it,
+		// which says no more than having no object at all.
+		if len(destinationMap) == 0 {
+			delete(destination, key)
+			continue
+		}
+
+		destination[key] = destinationMap
 	}
 
 	return nil
