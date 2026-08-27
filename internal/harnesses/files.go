@@ -47,3 +47,15 @@ func backupAndWriteFile(path string, data []byte) error {
 func pathExists(path string) (bool, error) {
 	return fileio.Exists(path)
 }
+
+// headerPatch turns a header map into the shape a config patch needs. A patch
+// merges recursively only into a map[string]any, so anything else here would
+// replace the headers a user added by hand instead of joining them.
+func headerPatch(headers map[string]string) map[string]any {
+	patch := make(map[string]any, len(headers))
+	for name, value := range headers {
+		patch[name] = value
+	}
+
+	return patch
+}

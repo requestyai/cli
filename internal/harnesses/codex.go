@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/pelletier/go-toml/v2"
+	"github.com/requestyai/cli/internal/attribution"
 	"github.com/requestyai/cli/internal/config"
 )
 
@@ -27,9 +28,13 @@ type codexConfig struct {
 }
 
 type codexProvider struct {
-	Name        string            `toml:"name"`
-	BaseURL     string            `toml:"base_url"`
-	HTTPHeaders map[string]string `toml:"http_headers"`
+	Name    string `toml:"name"`
+	BaseURL string `toml:"base_url"`
+
+	// HTTPHeaders holds fixed values, EnvHTTPHeaders the names of environment
+	// variables Codex reads on every launch.
+	HTTPHeaders    map[string]string `toml:"http_headers"`
+	EnvHTTPHeaders map[string]string `toml:"env_http_headers,omitempty"`
 }
 
 type codexAuth struct {
@@ -133,13 +138,7 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 		"web_search":                         "live",
 		"personality":                        "pragmatic",
 		"model_providers": map[string]any{
-			codexModelProvider: map[string]any{
-				"name":     "Requesty",
-				"base_url": fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
-				"http_headers": map[string]any{
-					"X-Title": "OpenAI Codex",
-				},
-			},
+			codexModelProvider: c.provider(opts),
 		},
 	})
 	if err != nil {
@@ -172,11 +171,10 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 		ModelProvider: codexModelProvider,
 		ModelProviders: map[string]codexProvider{
 			codexModelProvider: {
-				Name:    "Requesty",
-				BaseURL: fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
-				HTTPHeaders: map[string]string{
-					"X-Title": "OpenAI Codex",
-				},
+				Name:           "Requesty",
+				BaseURL:        fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
+				HTTPHeaders:    c.headers(opts),
+				EnvHTTPHeaders: c.envHeaders(opts),
 			},
 		},
 		ModelReasoningEffort:            "high",
@@ -199,6 +197,38 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 	}
 
 	return nil
+}
+
+// provider describes the Requesty entry Codex routes through. The environment
+// header table is left out when there is nothing to name, so a user who did not
+// opt in keeps a config file without an empty table in it.
+func (c *CodexHarness) provider(opts ConfigureOptions) map[string]any {
+	provider := map[string]any{
+		"name":         "Requesty",
+		"base_url":     fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
+		"http_headers": headerPatch(c.headers(opts)),
+	}
+
+	if envHeaders := c.envHeaders(opts); len(envHeaders) > 0 {
+		provider["env_http_headers"] = headerPatch(envHeaders)
+	}
+
+	return provider
+}
+
+// headers name Codex to Requesty and carry the attribution dimensions it can be
+// given upfront.
+func (c *CodexHarness) headers(opts ConfigureOptions) map[string]string {
+	return opts.Attribution.Static(map[string]string{
+		"X-Title": "OpenAI Codex",
+	})
+}
+
+// envHeaders carry the dimensions that depend on where Codex runs. Codex reads
+// them from the environment on every launch, from the variables the shell hook
+// exports, which is why they are named here instead of resolved.
+func (c *CodexHarness) envHeaders(opts ConfigureOptions) map[string]string {
+	return opts.Attribution.Dynamic(attribution.EnvName)
 }
 
 func (c *CodexHarness) configPath() string {

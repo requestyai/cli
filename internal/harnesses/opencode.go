@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/requestyai/cli/internal/attribution"
 	"github.com/requestyai/cli/internal/config"
 )
 
@@ -116,9 +117,7 @@ func (o *OpenCodeHarness) configureMerge(opts ConfigureOptions) error {
 				"options": map[string]any{
 					"baseURL": o.baseURL(),
 					"apiKey":  o.config.APIKey,
-					"headers": map[string]any{
-						"X-Title": "OpenCode",
-					},
+					"headers": headerPatch(o.headers(opts)),
 				},
 			},
 		},
@@ -143,9 +142,7 @@ func (o *OpenCodeHarness) configureOverwrite(opts ConfigureOptions) error {
 				Options: openCodeProviderOptions{
 					BaseURL: o.baseURL(),
 					APIKey:  o.config.APIKey,
-					Headers: map[string]string{
-						"X-Title": "OpenCode",
-					},
+					Headers: o.headers(opts),
 				},
 			},
 		},
@@ -156,6 +153,15 @@ func (o *OpenCodeHarness) configureOverwrite(opts ConfigureOptions) error {
 	}
 
 	return nil
+}
+
+// headers name OpenCode to Requesty and carry the attribution dimensions.
+// OpenCode expands an {env:…} placeholder anywhere in its config file, so the
+// dynamic dimensions are read from what the shell hook exported.
+func (o *OpenCodeHarness) headers(opts ConfigureOptions) map[string]string {
+	return opts.Attribution.All(map[string]string{
+		"X-Title": "OpenCode",
+	}, attribution.EnvPlaceholder)
 }
 
 // modelID qualifies the model with the provider, as OpenCode addresses models

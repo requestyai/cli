@@ -3,6 +3,7 @@ package harnesses
 import (
 	"fmt"
 
+	"github.com/requestyai/cli/internal/attribution"
 	"github.com/requestyai/cli/internal/config"
 )
 
@@ -15,6 +16,11 @@ type Status struct {
 type ConfigureOptions struct {
 	Model     string
 	Overwrite bool
+
+	// Attribution is the set of dimensions to attribute requests by. The zero
+	// value writes no attribution headers, which is what a user who did not opt
+	// in gets.
+	Attribution attribution.Set
 }
 
 type Harness interface {

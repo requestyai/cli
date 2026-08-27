@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/requestyai/cli/internal/attribution"
 	"github.com/requestyai/cli/internal/config"
 )
 
@@ -143,10 +144,7 @@ func (p *PiHarness) configureMerge(opts ConfigureOptions) error {
 				"baseUrl": p.config.RouterBaseURL,
 				"api":     piAPI,
 				"apiKey":  p.config.APIKey,
-				"headers": map[string]any{
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title":      "Pi",
-				},
+				"headers": headerPatch(p.headers(opts)),
 				"models": []any{
 					map[string]any{"id": opts.Model},
 				},
@@ -186,10 +184,7 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 				BaseURL: p.config.RouterBaseURL,
 				API:     piAPI,
 				APIKey:  p.config.APIKey,
-				Headers: map[string]string{
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title":      "Pi",
-				},
+				Headers: p.headers(opts),
 				Models: []piModelConfig{
 					{ID: opts.Model},
 				},
@@ -212,6 +207,17 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 	}
 
 	return nil
+}
+
+// headers name Pi to Requesty and carry the attribution dimensions. Pi resolves
+// each one by running the shell command itself on every launch, rather than
+// reading what the shell hook exported, because it refuses to start when a
+// header value cannot be resolved and the hook may never have been loaded.
+func (p *PiHarness) headers(opts ConfigureOptions) map[string]string {
+	return opts.Attribution.All(map[string]string{
+		"HTTP-Referer": "https://pi.dev",
+		"X-Title":      "Pi",
+	}, attribution.ShellCommand)
 }
 
 func (p *PiHarness) modelsPath() string {
