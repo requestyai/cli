@@ -1,7 +1,6 @@
 package util
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 const (
 	managePermissionFlag      = "manage-permission"
 	completionsPermissionFlag = "completions-permission"
+	roleFlag                  = "role"
 
 	// NeverExpires is the expiry argument for a key that should keep working.
 	NeverExpires = "never"
@@ -20,12 +20,37 @@ const (
 
 // ParseID trims an API key ID and rejects an empty value.
 func ParseID(value string) (string, error) {
+	return parseID("api key", value)
+}
+
+// ParseGroupID trims a group ID and rejects an empty value.
+func ParseGroupID(value string) (string, error) {
+	return parseID("group", value)
+}
+
+// ParseUserID trims a user ID and rejects an empty value.
+func ParseUserID(value string) (string, error) {
+	return parseID("user", value)
+}
+
+// parseID trims an identifier and names what was missing when it is empty.
+func parseID(subject, value string) (string, error) {
 	id := strings.TrimSpace(value)
 	if id == "" {
-		return "", errors.New("missing api key id")
+		return "", fmt.Errorf("missing %s id", subject)
 	}
 
 	return id, nil
+}
+
+// ParseRole validates a group member role.
+func ParseRole(value string) (client.GroupRole, error) {
+	switch role := client.GroupRole(strings.TrimSpace(value)); role {
+	case client.GroupRoleAdmin, client.GroupRoleMember:
+		return role, nil
+	default:
+		return "", fmt.Errorf("invalid --%s %q: want admin or member", roleFlag, value)
+	}
 }
 
 // ParsePermissions validates and combines the management and completions

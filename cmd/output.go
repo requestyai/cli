@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/requestyai/cli/internal/client"
 	"github.com/shopspring/decimal"
@@ -70,6 +72,43 @@ func formatLimit(limit decimal.Decimal) string {
 	}
 
 	return formatMoney(limit)
+}
+
+// formatOptionalLimit renders a spending cap the API may leave out, where both
+// an absent value and zero mean there is none.
+func formatOptionalLimit(limit *decimal.Decimal) string {
+	if limit == nil {
+		return "unlimited"
+	}
+
+	return formatLimit(*limit)
+}
+
+// formatRateLimit renders a member's rate limit, which may not be set.
+func formatRateLimit(rateLimit *int64) string {
+	if rateLimit == nil {
+		return "-"
+	}
+
+	return strconv.FormatInt(*rateLimit, 10)
+}
+
+// formatTime renders a timestamp the way the CLI accepts one back.
+func formatTime(moment time.Time) string {
+	if moment.IsZero() {
+		return "-"
+	}
+
+	return moment.Format(time.RFC3339)
+}
+
+// formatDate renders a timestamp as a calendar date, to keep table rows narrow.
+func formatDate(moment time.Time) string {
+	if moment.IsZero() {
+		return "-"
+	}
+
+	return moment.Format(time.DateOnly)
 }
 
 // formatLabels renders labels as sorted key=value pairs.
