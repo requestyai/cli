@@ -19,6 +19,37 @@ func TestParseID(t *testing.T) {
 	assert.EqualError(t, err, "missing api key id")
 }
 
+func TestParseGroupID(t *testing.T) {
+	id, err := ParseGroupID("  group-123  ")
+	require.NoError(t, err)
+	assert.Equal(t, "group-123", id)
+
+	_, err = ParseGroupID(" \t ")
+	assert.EqualError(t, err, "missing group id")
+}
+
+func TestParseUserID(t *testing.T) {
+	id, err := ParseUserID("  user-123  ")
+	require.NoError(t, err)
+	assert.Equal(t, "user-123", id)
+
+	_, err = ParseUserID(" \t ")
+	assert.EqualError(t, err, "missing user id")
+}
+
+func TestParseRole(t *testing.T) {
+	role, err := ParseRole(" admin ")
+	require.NoError(t, err)
+	assert.Equal(t, client.GroupRoleAdmin, role)
+
+	role, err = ParseRole("member")
+	require.NoError(t, err)
+	assert.Equal(t, client.GroupRoleMember, role)
+
+	_, err = ParseRole("owner")
+	assert.EqualError(t, err, `invalid --role "owner": want admin or member`)
+}
+
 func TestParsePermissions(t *testing.T) {
 	permissions, err := ParsePermissions("", "")
 	require.NoError(t, err)
