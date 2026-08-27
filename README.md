@@ -19,6 +19,7 @@ replaced by default.
 - [First run](#first-run)
 - [Supported harnesses](#supported-harnesses)
 - [Usage](#usage)
+- [Cost attribution](#cost-attribution)
 - [Merge or overwrite](#merge-or-overwrite)
 - [Backups and how to revert](#backups-and-how-to-revert)
 - [Keys](#keys)
@@ -88,11 +89,12 @@ cannot be configured. The footer always shows the keys available on the current 
   ↑/↓ move · space configure · r refresh · q/esc quit
 ```
 
-**Choose a model, then choose how to write the config**
+**Choose a model, then how requests are attributed, then how to write the config**
 
 The model list is fetched from your account with your key, so it reflects the models and policies
-you actually have access to. Then choose **merge** (recommended) or **overwrite**. The CLI writes
-the files, the row flips to `[✓] active`, and the header count goes up.
+you actually have access to. Then decide whether requests should say where they came from, see
+[Cost attribution](#cost-attribution). Finally choose **merge** (recommended) or **overwrite**. The
+CLI writes the files, the row flips to `[✓] active`, and the header count goes up.
 
 **Restart the harness**
 
@@ -114,8 +116,9 @@ Pi and Hermes are configured against the native Anthropic Messages format, which
 Requesty apply [automatic prompt caching](https://docs.requesty.ai/features/auto-caching) to
 those harnesses.
 
-Where a harness supports custom headers, the CLI also sets an `X-Title` header naming the tool, so
-the [Requesty dashboard](https://app.requesty.ai/analytics) can break spend down per harness.
+Where a harness supports custom headers, the CLI sets an `X-Title` header naming the tool, so the
+[Requesty dashboard](https://app.requesty.ai/analytics) can break spend down per harness. The same
+headers carry the repository and branch when you turn on [cost attribution](#cost-attribution).
 
 DeepSeek Harness needs the models of a custom provider listed in its own settings, so the CLI
 writes the model you selected. You can add more Requesty models later inside the harness, under
@@ -127,6 +130,48 @@ a later run of the CLI keeps those entries and only adds the model you selected 
 Above the harness list, the CLI shows spend, requests and tokens for the last 30 days for the key
 you onboarded with, and refreshes them on demand. Full breakdowns by model, user and tool live in
 the [Requesty dashboard](https://app.requesty.ai/analytics).
+
+## Cost attribution
+
+By default a request tells Requesty which harness it came from and nothing else. The wizard can
+also attribute each request to the repository and branch you are working in, and to you, so a bill
+can be read per project rather than per key:
+
+| Header | Value |
+| --- | --- |
+| `X-Requesty-Repo` | The `origin` remote of the current directory, without the scheme or the `.git` suffix, for example `github.com/requestyai/cli` |
+| `X-Requesty-Branch` | The branch checked out in the current directory |
+| `X-Requesty-User` | Your username on this machine |
+
+Requesty turns each of these into a dimension you can group by in the
+[dashboard](https://app.requesty.ai/analytics) and the management API, as `extra.Repo`,
+`extra.Branch` and `extra.User`, and strips the headers before forwarding the request to a model
+provider. Outside a repository, `Repo` and `Branch` are sent as `none`. The harness itself is
+already named by `X-Title`, so there is no separate header for it.
+
+**This is off unless you ask for it.** Repository and branch names are often private, so the
+attribution step starts on `Keep requests unattributed` and you have to select the other row.
+
+**How the repository and branch are read.** They depend on where a harness runs, not on where the
+CLI ran, so they cannot be written into a config file once and be right afterwards. Instead:
+
+- **Pi** runs a `git` command itself on every launch, from its own configuration. Nothing else is
+  needed.
+- **Claude Code, Codex and OpenCode** read them from their environment. Choosing attribution writes
+  `~/.requesty/shell/attribution.sh` (or `attribution.fish`) and adds a marked block to your
+  `.zshrc`, `.bashrc` or `config.fish` that loads it. The hook refreshes the values before each
+  prompt, so a `git checkout` is picked up without opening a new shell. Open a new shell once after
+  the change.
+- **DeepSeek Harness** can only be given fixed header values, so it carries `X-Requesty-User` and
+  leaves the repository and branch out rather than reporting a stale one.
+- **Hermes** ignores the headers its configuration asks for when it speaks the Anthropic Messages
+  format, which is the format Requesty uses for it, so it cannot be attributed at all.
+
+To stop sending them, run the wizard again and pick `Keep requests unattributed`, which takes the
+headers back out of that harness's configuration. Claude Code has none of its own to take out, as it
+reads them from the shell hook, so it also needs the hook removed: delete the block marked
+`# --- Requesty attribution ---` from your shell startup file, along with `~/.requesty/shell`. The
+hook is otherwise left in place, because one hook serves every harness.
 
 ## Merge or overwrite
 
