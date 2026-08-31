@@ -178,7 +178,7 @@ on the [API keys page](https://app.requesty.ai/api-keys).
 | `router_base_url` | Inference endpoint the harnesses are pointed at |
 
 Change `router_base_url` to route through a different region or a self-hosted deployment, for
-example `https://eu.router.requesty.ai`. Delete the file to start over from onboarding.
+example `https://router.eu.requesty.ai`. Delete the file to start over from onboarding.
 
 ## Advanced installation options
 
