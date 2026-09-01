@@ -56,10 +56,6 @@ custom_providers:
 		"model": map[string]any{
 			"default":  "anthropic/claude-fable-5",
 			"provider": "requesty",
-			"default_headers": map[string]any{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 		"custom_providers": []any{
 			map[string]any{
@@ -139,10 +135,6 @@ func TestHermesHarnessConfigureCreatesMissingConfig(t *testing.T) {
 		"model": map[string]any{
 			"default":  "anthropic/claude-fable-5",
 			"provider": "requesty",
-			"default_headers": map[string]any{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 		"custom_providers": []any{
 			map[string]any{

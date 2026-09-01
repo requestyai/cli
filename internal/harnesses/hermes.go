@@ -15,7 +15,9 @@ const (
 	hermesProvider = "requesty"
 
 	// hermesAPIMode is the native Anthropic Messages format, which lets Requesty
-	// apply automatic prompt caching to Hermes' large system prompt.
+	// apply automatic prompt caching to Hermes' large system prompt. In this mode
+	// Hermes ignores the headers its config file asks for, which makes it the one
+	// harness that cannot carry request attribution.
 	hermesAPIMode = "anthropic_messages"
 )
 
@@ -25,9 +27,8 @@ type hermesConfig struct {
 }
 
 type hermesModel struct {
-	Default        string            `yaml:"default"`
-	Provider       string            `yaml:"provider"`
-	DefaultHeaders map[string]string `yaml:"default_headers,omitempty"`
+	Default  string `yaml:"default"`
+	Provider string `yaml:"provider"`
 }
 
 type hermesCustomProvider struct {
@@ -127,10 +128,6 @@ func (h *HermesHarness) configureMerge(opts ConfigureOptions) error {
 		"model": map[string]any{
 			"default":  opts.Model,
 			"provider": hermesProvider,
-			"default_headers": map[string]any{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 	})
 	if err != nil {
@@ -157,10 +154,6 @@ func (h *HermesHarness) configureOverwrite(opts ConfigureOptions) error {
 		Model: hermesModel{
 			Default:  opts.Model,
 			Provider: hermesProvider,
-			DefaultHeaders: map[string]string{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 		CustomProviders: []hermesCustomProvider{
 			{

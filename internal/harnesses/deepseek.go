@@ -184,11 +184,8 @@ func (d *DeepSeekHarness) configureMerge(opts ConfigureOptions) error {
 					"baseURL":              d.routerBaseURL(),
 					"defaultContextWindow": deepseekContextWindow,
 					"defaultMaxTokens":     deepseekMaxTokens,
-					"headers": map[string]any{
-						"HTTP-Referer": "https://requesty.ai",
-						"X-Title":      "DeepSeek Harness",
-					},
-					"models": models,
+					"headers":              headerPatch(d.headers(opts)),
+					"models":               models,
 				},
 			},
 		},
@@ -223,10 +220,7 @@ func (d *DeepSeekHarness) configureOverwrite(opts ConfigureOptions) error {
 					BaseURL:              d.routerBaseURL(),
 					DefaultContextWindow: deepseekContextWindow,
 					DefaultMaxTokens:     deepseekMaxTokens,
-					Headers: map[string]string{
-						"HTTP-Referer": "https://requesty.ai",
-						"X-Title":      "DeepSeek Harness",
-					},
+					Headers:              d.headers(opts),
 					Models: []deepseekModelConfig{
 						{ID: opts.Model},
 					},
@@ -305,6 +299,17 @@ func (d *DeepSeekHarness) writeCredentials() error {
 	}
 
 	return nil
+}
+
+// headers name the harness to Requesty and carry the attribution dimensions it
+// can be given upfront. The harness has no way to read a header value from the
+// environment or a command, so the repository and branch are left out rather
+// than frozen to wherever the CLI happened to run.
+func (d *DeepSeekHarness) headers(opts ConfigureOptions) map[string]string {
+	return opts.Attribution.Static(map[string]string{
+		"HTTP-Referer": "https://requesty.ai",
+		"X-Title":      "DeepSeek Harness",
+	})
 }
 
 // routerBaseURL keeps the /v1 suffix the OpenAI Chat Completions format needs.

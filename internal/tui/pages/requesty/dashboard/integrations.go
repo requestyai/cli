@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/requestyai/cli/internal/attribution"
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
 	"github.com/requestyai/cli/internal/harnesses"
@@ -27,6 +28,7 @@ type integrationWizardStep uint8
 
 const (
 	integrationModelWizardStep integrationWizardStep = iota
+	integrationAttributionWizardStep
 	integrationModeWizardStep
 )
 
@@ -35,11 +37,12 @@ type integrationWizardState struct {
 	open bool
 	step integrationWizardStep
 
-	options     harnesses.ConfigureOptions
-	models      []client.Model
-	modelCursor int
-	modelSearch textinput.Model
-	modeCursor  int
+	options           harnesses.ConfigureOptions
+	models            []client.Model
+	modelCursor       int
+	modelSearch       textinput.Model
+	attributionCursor int
+	modeCursor        int
 
 	modelsErr    error
 	configureErr error
@@ -75,7 +78,8 @@ type integrationModelsLoadedMsg struct {
 
 // integrationConfiguredMsg carries the result of configuring the selected harness
 type integrationConfiguredMsg struct {
-	err error
+	hook attribution.ShellHook
+	err  error
 }
 
 // integrationState holds the integrations list and configuration wizard state.
@@ -87,6 +91,10 @@ type integrationState struct {
 	cursor     int
 	refreshing bool
 	loadErr    error
+
+	// notice reports what the last configuration changed outside the harness
+	// itself, which is the startup file the shell hook is sourced from.
+	notice string
 
 	wizard integrationWizardState
 }
@@ -157,11 +165,38 @@ func (m integrationState) loadModels() tea.Msg {
 	return integrationModelsLoadedMsg{models: models, err: err}
 }
 
+// configure writes the harness config, and the shell hook alongside it when the
+// user asked for attribution, as most harnesses read the repository and branch
+// from the environment the hook exports.
 func (m integrationState) configure(harness harnesses.Harness, options harnesses.ConfigureOptions) tea.Cmd {
 	return func() tea.Msg {
-		err := harness.Configure(options)
-		return integrationConfiguredMsg{err: err}
+		hook, err := installAttributionShellHook(options.Attribution)
+		if err != nil {
+			return integrationConfiguredMsg{err: err}
+		}
+
+		if err := harness.Configure(options); err != nil {
+			return integrationConfiguredMsg{err: err}
+		}
+
+		return integrationConfiguredMsg{hook: hook}
 	}
+}
+
+// installAttributionShellHook installs the hook when attribution is on. When it
+// is off the hook is left where it is rather than removed, as one hook serves
+// every harness and another may still be attributed through it.
+func installAttributionShellHook(set attribution.Set) (attribution.ShellHook, error) {
+	if len(set) == 0 {
+		return attribution.ShellHook{}, nil
+	}
+
+	hook, err := attribution.InstallShellHook(set)
+	if err != nil {
+		return attribution.ShellHook{}, fmt.Errorf("could not set up attribution: %w", err)
+	}
+
+	return hook, nil
 }
 
 func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
@@ -192,6 +227,7 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 			m.wizard.configureErr = fmt.Errorf("could not configure harness: %w", typedMsg.err)
 			return m, nil
 		}
+		m.notice = shellHookNotice(typedMsg.hook)
 		m.wizard = integrationWizardState{}
 		m.refreshing = true
 		return m, m.load
@@ -212,6 +248,7 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 		case "enter":
 			if m.canConfigure() {
 				var focus tea.Cmd
+				m.notice = ""
 				m.wizard, focus = newIntegrationWizardState()
 				return m, tea.Batch(m.loadModels, focus)
 			}
@@ -229,6 +266,8 @@ func (m integrationState) updateWizard(msg tea.KeyPressMsg) (integrationState, t
 	switch m.wizard.step {
 	case integrationModelWizardStep:
 		return m.updateModelStep(msg)
+	case integrationAttributionWizardStep:
+		return m.updateAttributionStep(msg)
 	case integrationModeWizardStep:
 		return m.updateModeStep(msg)
 	default:
@@ -255,8 +294,8 @@ func (m integrationState) updateModelStep(msg tea.KeyPressMsg) (integrationState
 			len(models) > 0 &&
 			m.cursor < len(m.items) {
 			m.wizard.options.Model = models[m.wizard.modelCursor].ID
-			m.wizard.step = integrationModeWizardStep
-			m.wizard.modeCursor = 0
+			m.wizard.step = integrationAttributionWizardStep
+			m.wizard.attributionCursor = 0
 			m.wizard.configureErr = nil
 		}
 	default:
@@ -287,11 +326,48 @@ func (m integrationWizardState) filteredModels() []client.Model {
 	return models
 }
 
-func (m integrationState) updateModeStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
+// updateAttributionStep asks whether requests should carry where they came from.
+// The answer is resolved into a set of dimensions here, so a machine that cannot
+// name its user is reported before anything is written.
+func (m integrationState) updateAttributionStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
 	switch msg.String() {
 	case "esc":
 		m.wizard.step = integrationModelWizardStep
 		m.wizard.options.Model = ""
+		m.wizard.attributionCursor = 0
+		m.wizard.configureErr = nil
+	case "up", "k":
+		if m.wizard.attributionCursor > 0 {
+			m.wizard.attributionCursor--
+		}
+	case "down", "j":
+		if m.wizard.attributionCursor < 1 {
+			m.wizard.attributionCursor++
+		}
+	case "enter":
+		m.wizard.options.Attribution = nil
+		if m.wizard.attributionCursor == 1 {
+			set, err := attribution.New()
+			if err != nil {
+				m.wizard.configureErr = fmt.Errorf("could not read attribution: %w", err)
+				return m, nil
+			}
+			m.wizard.options.Attribution = set
+		}
+
+		m.wizard.step = integrationModeWizardStep
+		m.wizard.modeCursor = 0
+		m.wizard.configureErr = nil
+	}
+
+	return m, nil
+}
+
+func (m integrationState) updateModeStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.wizard.step = integrationAttributionWizardStep
+		m.wizard.options.Attribution = nil
 		m.wizard.modeCursor = 0
 		m.wizard.configureErr = nil
 	case "up", "k":
@@ -312,6 +388,19 @@ func (m integrationState) updateModeStep(msg tea.KeyPressMsg) (integrationState,
 	}
 
 	return m, nil
+}
+
+// shellHookNotice reports the startup file the hook was added to, as the
+// variables it exports only reach a shell started after the change.
+func shellHookNotice(hook attribution.ShellHook) string {
+	if hook.StartupFilePath == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		"Attribution added to %s. Open a new shell for it to take effect.",
+		hook.StartupFilePath,
+	)
 }
 
 func (m integrationState) canConfigure() bool {
@@ -442,6 +531,9 @@ func (m integrationState) detail(width int) string {
 	if m.canConfigure() {
 		lines = append(lines, text.LineSeparator, theme.Key.Render("enter")+" "+theme.Footer.Render("to configure"))
 	}
+	if m.notice != "" {
+		lines = append(lines, text.LineSeparator, wrap.Render(theme.Good.Render(m.notice)))
+	}
 	if m.refreshing {
 		lines = append(lines, theme.Muted.Render("Refreshing…"))
 	}
@@ -488,6 +580,8 @@ func (m integrationState) wizardPage(inner int) integrationWizardPage {
 	switch m.wizard.step {
 	case integrationModelWizardStep:
 		return m.modelStepPage(inner)
+	case integrationAttributionWizardStep:
+		return m.attributionStepPage(inner)
 	case integrationModeWizardStep:
 		return m.modeStepPage(inner)
 	default:
@@ -532,6 +626,45 @@ func (m integrationState) modelStepPage(inner int) integrationWizardPage {
 	page.body = lipgloss.JoinVertical(lipgloss.Left, search, text.LineSeparator, list)
 
 	return page
+}
+
+func (m integrationState) attributionStepPage(inner int) integrationWizardPage {
+	body := table.Table{
+		Cols: []table.Column{
+			{Title: "ATTRIBUTION", Width: inner - 2, Align: table.Left},
+		},
+		Rows: [][]string{
+			{"Keep requests unattributed"},
+			{"Attribute requests by repository, branch and user"},
+		},
+		Cursor: m.wizard.attributionCursor,
+		Height: 2,
+		Style:  table.CellStyle(m.wizard.attributionCursor),
+	}.Render()
+
+	description := []string{"Requests carry the name of the harness and nothing more."}
+	if m.wizard.attributionCursor == 1 {
+		description = []string{
+			"Adds the repository, branch and your username to each request, as " +
+				"headers Requesty groups spend by and removes before calling a model " +
+				"provider.",
+			"The repository and branch are read when the harness starts, from a hook " +
+				"this adds to your shell startup file.",
+		}
+	}
+
+	return integrationWizardPage{
+		title: "Choose what requests are attributed to",
+		body: lipgloss.JoinVertical(lipgloss.Left,
+			body,
+			text.LineSeparator,
+			lipgloss.NewStyle().Width(inner-2).Render(
+				theme.Muted.Render(strings.Join(description, "\n\n")),
+			),
+		),
+		enterHint:  "continue",
+		escapeHint: "back",
+	}
 }
 
 func (m integrationState) modeStepPage(inner int) integrationWizardPage {
