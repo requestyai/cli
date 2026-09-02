@@ -37,6 +37,43 @@ func TestParseUserID(t *testing.T) {
 	assert.EqualError(t, err, "missing user id")
 }
 
+func TestParseAccessListID(t *testing.T) {
+	id, err := ParseAccessListID("  list-123  ")
+	require.NoError(t, err)
+	assert.Equal(t, "list-123", id)
+
+	_, err = ParseAccessListID(" \t ")
+	assert.EqualError(t, err, "missing access list id")
+}
+
+func TestParseModality(t *testing.T) {
+	modality, err := ParseModality(" chat ")
+	require.NoError(t, err)
+	assert.Equal(t, client.ModalityChat, modality)
+
+	for _, want := range client.Modalities {
+		modality, err := ParseModality(string(want))
+		require.NoError(t, err)
+		assert.Equal(t, want, modality)
+	}
+
+	_, err = ParseModality("video")
+	assert.EqualError(t, err, `invalid modality "video": want chat, embedding, image, transcription or speech`)
+}
+
+func TestParseModels(t *testing.T) {
+	models, err := ParseModels([]string{" openai/gpt-4o ", "anthropic/claude-sonnet-4-20250514"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"openai/gpt-4o", "anthropic/claude-sonnet-4-20250514"}, models)
+
+	models, err = ParseModels(nil)
+	require.NoError(t, err)
+	assert.Empty(t, models)
+
+	_, err = ParseModels([]string{"openai/gpt-4o", " "})
+	assert.EqualError(t, err, `invalid model " ": want a model id such as openai/gpt-4o`)
+}
+
 func TestParseRole(t *testing.T) {
 	role, err := ParseRole(" admin ")
 	require.NoError(t, err)

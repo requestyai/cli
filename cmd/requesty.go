@@ -61,6 +61,7 @@ func newRootCommand(env environment) *cobra.Command {
 	root.AddCommand(
 		newAPIKeysCommand(env),
 		newGroupsCommand(env),
+		newAccessListsCommand(env),
 	)
 
 	return root
