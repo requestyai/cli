@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -33,6 +34,11 @@ func ParseUserID(value string) (string, error) {
 	return parseID("user", value)
 }
 
+// ParseAccessListID trims an access list ID and rejects an empty value.
+func ParseAccessListID(value string) (string, error) {
+	return parseID("access list", value)
+}
+
 // parseID trims an identifier and names what was missing when it is empty.
 func parseID(subject, value string) (string, error) {
 	id := strings.TrimSpace(value)
@@ -51,6 +57,41 @@ func ParseRole(value string) (client.GroupRole, error) {
 	default:
 		return "", fmt.Errorf("invalid --%s %q: want admin or member", roleFlag, value)
 	}
+}
+
+// ParseModality validates the kind of model an access list entry is for.
+func ParseModality(value string) (client.Modality, error) {
+	modality := client.Modality(strings.TrimSpace(value))
+	if slices.Contains(client.Modalities, modality) {
+		return modality, nil
+	}
+
+	return "", fmt.Errorf("invalid modality %q: want %s", value, modalityChoices())
+}
+
+// modalityChoices lists the modalities the way an error message reads them out.
+func modalityChoices() string {
+	names := make([]string, 0, len(client.Modalities))
+	for _, modality := range client.Modalities {
+		names = append(names, string(modality))
+	}
+
+	return strings.Join(names[:len(names)-1], ", ") + " or " + names[len(names)-1]
+}
+
+// ParseModels trims model identifiers and rejects any that are blank, which
+// would otherwise slip into an access list as an entry nothing can match.
+func ParseModels(values []string) ([]string, error) {
+	models := make([]string, 0, len(values))
+	for _, value := range values {
+		model := strings.TrimSpace(value)
+		if model == "" {
+			return nil, fmt.Errorf("invalid model %q: want a model id such as openai/gpt-4o", value)
+		}
+		models = append(models, model)
+	}
+
+	return models, nil
 }
 
 // ParsePermissions validates and combines the management and completions
