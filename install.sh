@@ -209,46 +209,38 @@ install_release() {
 	mkdir -p "$REQUESTY_HOME"
 }
 
-# configure_path adds the install directory to PATH in the configuration file
-# of the current shell, inside a marker block so upgrades stay idempotent.
-configure_path() {
-	[ "$MODIFY_PATH" = true ] || return 0
-
-	case ":$PATH:" in
-	*":$INSTALL_DIR:"*) return 0 ;;
-	esac
-
-	shell_name="$(basename "${SHELL:-sh}")"
-	case "$shell_name" in
-	fish)
-		profile="${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish"
-		line="fish_add_path \"$INSTALL_DIR\""
-		;;
-	zsh)
-		profile="${ZDOTDIR:-$HOME}/.zshrc"
-		line="export PATH=\"$INSTALL_DIR:\$PATH\""
-		;;
+# shell_profile prints the configuration file of the current shell.
+shell_profile() {
+	case "$1" in
+	fish) echo "${XDG_CONFIG_HOME:-$HOME/.config}/fish/config.fish" ;;
+	zsh) echo "${ZDOTDIR:-$HOME}/.zshrc" ;;
 	bash)
-		profile="$HOME/.bashrc"
-		[ -f "$profile" ] || [ ! -f "$HOME/.bash_profile" ] || profile="$HOME/.bash_profile"
-		line="export PATH=\"$INSTALL_DIR:\$PATH\""
+		if [ ! -f "$HOME/.bashrc" ] && [ -f "$HOME/.bash_profile" ]; then
+			echo "$HOME/.bash_profile"
+		else
+			echo "$HOME/.bashrc"
+		fi
 		;;
-	*)
-		profile="$HOME/.profile"
-		line="export PATH=\"$INSTALL_DIR:\$PATH\""
-		;;
+	*) echo "$HOME/.profile" ;;
 	esac
+}
 
-	if [ ! -f "$profile" ]; then
-		PATH_LINE="$line"
-		warn "Could not configure PATH because $profile does not exist"
-		return 0
-	fi
+# path_line prints the line that puts the install directory on PATH.
+path_line() {
+	case "$1" in
+	fish) echo "fish_add_path \"$INSTALL_DIR\"" ;;
+	*) echo "export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
+	esac
+}
 
-	if grep -F "$MARKER_BEGIN" "$profile" >/dev/null 2>&1; then
-		PROFILE="$profile"
-		return 0
-	fi
+# configure_path appends the PATH line to the profile inside a marker block so
+# upgrades stay idempotent. It returns 0 only when the profile was modified.
+configure_path() {
+	profile="$1"
+	line="$2"
+
+	[ -f "$profile" ] || return 1
+	grep -F "$MARKER_BEGIN" "$profile" >/dev/null 2>&1 && return 1
 
 	{
 		echo ""
@@ -256,10 +248,6 @@ configure_path() {
 		echo "$line"
 		echo "$MARKER_END"
 	} >>"$profile"
-
-	PROFILE="$profile"
-	PROFILE_UPDATED=true
-	step "Added $INSTALL_DIR to PATH in $PROFILE"
 }
 
 # short_path replaces a leading $HOME with ~ so commands are easier to read.
@@ -270,7 +258,12 @@ short_path() {
 	esac
 }
 
+# summary prints the final report. The optional pair of arguments is a PATH
+# related instruction and the command that goes with it.
 summary() {
+	path_instruction="${1:-}"
+	path_command="${2:-}"
+
 	printf '\n  %s%s%s %s%s %s is ready%s\n\n' "$GREEN" "$TICK" "$RESET" "$BOLD" "$BINARY" "$VERSION" "$RESET"
 
 	if [ -f "$REQUESTY_HOME/config.json" ]; then
@@ -282,13 +275,9 @@ summary() {
 	action ""
 
 	n=1
-	if [ -n "${PATH_LINE:-}" ]; then
-		action "$n. Add this line to your shell configuration:"
-		action "   $(command_hint "$PATH_LINE")"
-		n=$((n + 1))
-	elif [ "${PROFILE_UPDATED:-false}" = true ]; then
-		action "$n. Reload your shell (or open a new terminal):"
-		action "   $(command_hint "source $(short_path "$PROFILE")")"
+	if [ -n "$path_instruction" ]; then
+		action "$n. $path_instruction"
+		action "   $(command_hint "$path_command")"
 		n=$((n + 1))
 	fi
 
@@ -296,6 +285,37 @@ summary() {
 	action "   $(command_hint "$BINARY")"
 	action ""
 	printf '\n'
+}
+
+# finish handles PATH configuration and prints the summary.
+finish() {
+	rm -f "$MARKER_FILE"
+
+	if [ "$MODIFY_PATH" != true ]; then
+		summary
+		return 0
+	fi
+
+	case ":$PATH:" in
+	*":$INSTALL_DIR:"*)
+		summary
+		return 0
+		;;
+	esac
+
+	shell_name="$(basename "${SHELL:-sh}")"
+	profile="$(shell_profile "$shell_name")"
+	line="$(path_line "$shell_name")"
+
+	if [ ! -f "$profile" ]; then
+		warn "Could not configure PATH because $profile does not exist"
+		summary "Add this line to your shell configuration:" "$line"
+	elif configure_path "$profile" "$line"; then
+		step "Added $INSTALL_DIR to PATH in $profile"
+		summary "Reload your shell (or open a new terminal):" "source $(short_path "$profile")"
+	else
+		summary "Reload your shell (or open a new terminal):" "source $(short_path "$profile")"
+	fi
 }
 
 main() {
@@ -361,9 +381,7 @@ main() {
 	installed="$(installed_version)"
 	if [ "$FORCE" = false ] && [ "$installed" = "$VERSION" ] && [ -x "$INSTALL_DIR/$BINARY" ]; then
 		step "$BINARY $VERSION is already installed in $INSTALL_DIR"
-		configure_path
-		rm -f "$MARKER_FILE"
-		summary
+		finish
 		exit 0
 	fi
 
@@ -376,9 +394,7 @@ main() {
 	install_release
 	printf '%s\n' "$VERSION" >"$RECEIPT"
 
-	configure_path
-	rm -f "$MARKER_FILE"
-	summary
+	finish
 }
 
 main "$@"
