@@ -11,6 +11,7 @@
 #   REQUESTY_HOME         Data directory (default: $HOME/.requesty)
 #   REQUESTY_INSTALL_DIR  Directory for the binary (default: $REQUESTY_HOME/bin)
 #   REQUESTY_VERSION      Release tag to install (default: latest)
+#   NO_COLOR              Disable colored output
 #
 # A marker file is created in the temporary directory while installing and
 # removed once the installation completes, so an interrupted run leaves a trace.
@@ -30,15 +31,70 @@ BINARY="requesty"
 MARKER_BEGIN="# >>> requesty cli installer >>>"
 MARKER_END="# <<< requesty cli installer <<<"
 
+# Colors are used when stdout is a terminal and NO_COLOR is unset. The script
+# is normally piped into sh, but stdout still points at the terminal.
+setup_style() {
+	BOLD="" DIM="" RED="" GREEN="" YELLOW="" CYAN="" RESET=""
+	if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+		BOLD="$(printf '\033[1m')"
+		DIM="$(printf '\033[2m')"
+		RED="$(printf '\033[31m')"
+		GREEN="$(printf '\033[32m')"
+		YELLOW="$(printf '\033[33m')"
+		CYAN="$(printf '\033[36m')"
+		RESET="$(printf '\033[0m')"
+	fi
+
+	TICK="*" CROSS="x" BAR="|"
+	case "${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" in
+	*UTF-8* | *utf8* | *UTF8* | *utf-8*)
+		TICK="✓" CROSS="✗" BAR="│"
+		;;
+	esac
+}
+
+banner() {
+	printf '%s' "$CYAN"
+	cat <<'EOF'
+
+  ____                            _
+ |  _ \ ___  __ _ _   _  ___  ___| |_ _   _
+ | |_) / _ \/ _` | | | |/ _ \/ __| __| | | |
+ |  _ <  __/ (_| | |_| |  __/\__ \ |_| |_| |
+ |_| \_\___|\__, |\__,_|\___||___/\__|\__, |
+               |_|                    |___/
+EOF
+	printf '%s\n' "$RESET"
+	printf '  %sRequesty CLI installer%s\n\n' "$BOLD" "$RESET"
+}
+
+# step prints a completed installation step.
+step() {
+	printf '  %s%s%s %s\n' "$GREEN" "$TICK" "$RESET" "$1"
+}
+
+warn() {
+	printf '  %s!%s %s\n' "$YELLOW" "$RESET" "$1"
+}
+
 info() {
-	printf '%s\n' "$1"
+	printf '  %s\n' "$1"
+}
+
+# action prints one line inside the highlighted "next steps" block.
+action() {
+	printf '  %s%s%s  %s\n' "$CYAN" "$BAR" "$RESET" "$1"
+}
+
+command_hint() {
+	printf '%s%s%s' "$BOLD" "$1" "$RESET"
 }
 
 fail() {
-	printf 'error: %s\n' "$1" >&2
+	printf '\n  %s%s error:%s %s\n' "$RED" "$CROSS" "$RESET" "$1" >&2
 
 	if [ -f "${MARKER_FILE:-}" ]; then
-		printf 'the installation did not complete, %s was left behind\n' "$MARKER_FILE" >&2
+		printf '  %sthe installation did not complete, %s was left behind%s\n' "$DIM" "$MARKER_FILE" "$RESET" >&2
 	fi
 
 	exit 1
@@ -103,13 +159,14 @@ verify_checksum() {
 	elif command -v shasum >/dev/null 2>&1; then
 		checksum="$(shasum -a 256 "$dir/$file" | cut -d ' ' -f 1)"
 	else
-		info "Neither sha256sum nor shasum is available, skipping checksum verification"
+		warn "Neither sha256sum nor shasum is available, skipping checksum verification"
 		return 0
 	fi
 
 	expected="$(grep " $file\$" "$dir/checksums.txt" | cut -d ' ' -f 1)"
 	[ -n "$expected" ] || fail "$file is missing from checksums.txt"
 	[ "$checksum" = "$expected" ] || fail "checksum mismatch for $file: expected $expected, got $checksum"
+	step "Verified checksum"
 }
 
 # latest_version resolves the tag the "latest" release points at, so the
@@ -134,9 +191,9 @@ install_release() {
 	tmp="$(mktemp -d)"
 	trap 'rm -rf "$tmp"' EXIT INT TERM
 
-	info "Downloading $archive"
 	download "$base/$archive" "$tmp/$archive"
 	download "$base/checksums.txt" "$tmp/checksums.txt"
+	step "Downloaded $archive"
 	verify_checksum "$tmp" "$archive"
 
 	tar -xzf "$tmp/$archive" -C "$tmp"
@@ -147,6 +204,7 @@ install_release() {
 
 	# Replace via rename so a running binary is never written into.
 	mv -f "$tmp/$BINARY" "$INSTALL_DIR/$BINARY"
+	step "Installed $BINARY to $INSTALL_DIR/$BINARY"
 
 	mkdir -p "$REQUESTY_HOME"
 }
@@ -182,8 +240,8 @@ configure_path() {
 	esac
 
 	if [ ! -f "$profile" ]; then
-		info "Could not configure PATH because $profile does not exist. Add this line to your shell configuration:"
-		info "  $line"
+		PATH_LINE="$line"
+		warn "Could not configure PATH because $profile does not exist"
 		return 0
 	fi
 
@@ -201,21 +259,43 @@ configure_path() {
 
 	PROFILE="$profile"
 	PROFILE_UPDATED=true
+	step "Added $INSTALL_DIR to PATH in $PROFILE"
+}
+
+# short_path replaces a leading $HOME with ~ so commands are easier to read.
+short_path() {
+	case "$1" in
+	"$HOME"/*) printf '~%s\n' "${1#"$HOME"}" ;;
+	*) printf '%s\n' "$1" ;;
+	esac
 }
 
 summary() {
-	info "Installed $BINARY $VERSION to $INSTALL_DIR/$BINARY"
+	printf '\n  %s%s%s %s%s %s is ready%s\n\n' "$GREEN" "$TICK" "$RESET" "$BOLD" "$BINARY" "$VERSION" "$RESET"
 
 	if [ -f "$REQUESTY_HOME/config.json" ]; then
-		info "Kept your configuration in $REQUESTY_HOME/config.json"
+		info "${DIM}Kept your configuration in $REQUESTY_HOME/config.json${RESET}"
+		printf '\n'
 	fi
 
-	if [ "${PROFILE_UPDATED:-false}" = true ]; then
-		info "Added $INSTALL_DIR to PATH in $PROFILE"
-		info "Run 'source $PROFILE' or open a new terminal, then run '$BINARY'"
-	else
-		info "Run '$BINARY' to get started"
+	printf '  %s%s%s  %sNext steps%s\n' "$CYAN" "$BAR" "$RESET" "$BOLD" "$RESET"
+	action ""
+
+	n=1
+	if [ -n "${PATH_LINE:-}" ]; then
+		action "$n. Add this line to your shell configuration:"
+		action "   $(command_hint "$PATH_LINE")"
+		n=$((n + 1))
+	elif [ "${PROFILE_UPDATED:-false}" = true ]; then
+		action "$n. Reload your shell (or open a new terminal):"
+		action "   $(command_hint "source $(short_path "$PROFILE")")"
+		n=$((n + 1))
 	fi
+
+	action "$n. Start the CLI:"
+	action "   $(command_hint "$BINARY")"
+	action ""
+	printf '\n'
 }
 
 main() {
@@ -257,12 +337,16 @@ main() {
 		esac
 	done
 
+	setup_style
+	banner
+
 	require_command uname
 	require_command tar
 
 	RECEIPT="$REQUESTY_HOME/version"
 	OS="$(detect_os)"
 	ARCH="$(detect_arch)"
+	step "Detected $OS/$ARCH"
 
 	# A leftover marker file is how a user, or we, can tell that a previous run
 	# died halfway through.
@@ -271,20 +355,22 @@ main() {
 
 	if [ "$VERSION" = "latest" ]; then
 		VERSION="$(latest_version)"
+		step "Resolved latest release: $VERSION"
 	fi
 
 	installed="$(installed_version)"
 	if [ "$FORCE" = false ] && [ "$installed" = "$VERSION" ] && [ -x "$INSTALL_DIR/$BINARY" ]; then
-		info "$BINARY $VERSION is already installed in $INSTALL_DIR"
+		step "$BINARY $VERSION is already installed in $INSTALL_DIR"
 		configure_path
 		rm -f "$MARKER_FILE"
+		summary
 		exit 0
 	fi
 
 	if [ -n "$installed" ]; then
-		info "Upgrading $BINARY from $installed to $VERSION"
+		info "${DIM}Upgrading $BINARY from $installed to $VERSION${RESET}"
 	else
-		info "Installing $BINARY $VERSION"
+		info "${DIM}Installing $BINARY $VERSION${RESET}"
 	fi
 
 	install_release
