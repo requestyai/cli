@@ -20,16 +20,13 @@ func TestCodexIntegrationRoundTrip(t *testing.T) {
 	// Simulate a machine with Codex installed but not integrated.
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "config.toml")
-	authPath := filepath.Join(configDir, "auth.json")
 	require.NoError(t, os.WriteFile(configPath, []byte("model = \"gpt-5.5\"\n"), 0o600))
-	require.NoError(t, os.WriteFile(authPath, []byte(`{"auth_mode": "chatgpt"}`), 0o600))
 
 	harness := NewCodexHarness(config, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
 	assert.Contains(t, status.Files, configPath)
-	assert.Contains(t, status.Files, authPath)
 	assert.Equal(t, false, status.Configured)
 
 	// Configure the machine.
@@ -51,7 +48,6 @@ func TestCodexHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	}
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "config.toml")
-	authPath := filepath.Join(configDir, "auth.json")
 	harness := NewCodexHarness(config, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
@@ -65,13 +61,37 @@ func TestCodexHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	assert.Equal(t, "openai-responses/gpt-5.5", parsedConfig.Model)
 	assert.Equal(t, codexModelProvider, parsedConfig.ModelProvider)
 	assert.Equal(t, "https://router.requesty.ai/v1", parsedConfig.ModelProviders[codexModelProvider].BaseURL)
+	assert.Equal(t, codexProviderAuth{
+		Command: "requesty",
+		Args:    []string{"auth", "token"},
+	}, parsedConfig.ModelProviders[codexModelProvider].Auth)
+	_, err = os.Stat(filepath.Join(configDir, "auth.json"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
+}
 
-	auth, err := os.ReadFile(authPath)
+func TestCodexHarnessConfigureOverwriteUsesProviderAuth(t *testing.T) {
+	cfg := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+	configDir := t.TempDir()
+	harness := NewCodexHarness(cfg, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model:     "openai-responses/gpt-5.5",
+		Overwrite: true,
+	}))
+
+	configBytes, err := os.ReadFile(filepath.Join(configDir, "config.toml"))
 	require.NoError(t, err)
-	assert.JSONEq(t, `{
-		"auth_mode": "apikey",
-		"OPENAI_API_KEY": "my-api-key"
-	}`, string(auth))
+	var parsedConfig codexConfig
+	require.NoError(t, toml.Unmarshal(configBytes, &parsedConfig))
+	assert.Equal(t, codexProviderAuth{
+		Command: "requesty",
+		Args:    []string{"auth", "token"},
+	}, parsedConfig.ModelProviders[codexModelProvider].Auth)
+	_, err = os.Stat(filepath.Join(configDir, "auth.json"))
+	assert.ErrorIs(t, err, os.ErrNotExist)
 }
 
 func TestCodexHarnessDefaultConfigDir(t *testing.T) {

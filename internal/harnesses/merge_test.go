@@ -61,6 +61,9 @@ custom_provider_setting = "keep-me"
 [model_providers.requesty.http_headers]
 Existing = "keep-me"
 
+[model_providers.requesty.auth]
+custom_auth_setting = "keep-me"
+
 [projects."/existing/project"]
 trust_level = "untrusted"
 
@@ -77,6 +80,10 @@ custom_project_setting = "keep-me"
 				"base_url": "https://router.requesty.ai/v1",
 				"http_headers": map[string]any{
 					"X-Title": "OpenAI Codex",
+				},
+				"auth": map[string]any{
+					"command": "requesty",
+					"args":    []string{"auth", "token"},
 				},
 			},
 		},
@@ -97,6 +104,11 @@ custom_project_setting = "keep-me"
 				"http_headers": map[string]any{
 					"Existing": "keep-me",
 					"X-Title":  "OpenAI Codex",
+				},
+				"auth": map[string]any{
+					"custom_auth_setting": "keep-me",
+					"command":             "requesty",
+					"args":                []string{"auth", "token"},
 				},
 			},
 		},
