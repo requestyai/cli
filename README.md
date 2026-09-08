@@ -104,7 +104,7 @@ Harnesses read their configuration at startup. Restart `claude`, `codex`, `openc
 | Harness | Detected by | Files written | What Requesty sets |
 | --- | --- | --- | --- |
 | [Claude Code](https://docs.requesty.ai/integrations/claude-code) | `claude` on `PATH` | `~/.claude/settings.json` | `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_MODEL` in the `env` block |
-| [Codex](https://docs.requesty.ai/integrations/openai-codex) | `codex` on `PATH` | `~/.codex/config.toml`, `~/.codex/auth.json` | A `requesty` model provider on `.../v1`, the selected model, and API key auth |
+| [Codex](https://docs.requesty.ai/integrations/openai-codex) | `codex` on `PATH` | `~/.codex/config.toml` | A `requesty` model provider on `.../v1`, the selected model, and command-backed auth through `requesty auth token` |
 | [OpenCode](https://docs.requesty.ai/integrations/opencode) | `opencode` on `PATH` | `~/.config/opencode/opencode.json` | A `requesty` provider on `.../v1` plus the model as `requesty/<model>` |
 | [Pi](https://docs.requesty.ai/integrations/pi) | `pi` on `PATH` | `~/.pi/agent/models.json` | A `requesty` provider using the native Anthropic Messages API |
 | [Hermes](https://docs.requesty.ai/integrations/hermes) | `hermes` on `PATH` | `~/.hermes/config.yaml` | A `requesty` entry in `custom_providers` and `model.default` |
@@ -154,9 +154,10 @@ mv ~/.claude/settings.json.requesty.bak ~/.claude/settings.json
 
 ## Keys
 
-Your Requesty API key is written into `~/.requesty/config.json` and into each harness config the
-CLI configures, because that is how those harnesses authenticate. All of these files are written
-so that only your user can read them.
+Your Requesty API key is written into `~/.requesty/config.json`. Codex retrieves it when needed
+through `requesty auth token`; other harnesses may also store it in their own config because that
+is how they authenticate. All files containing the key are written so that only your user can
+read them.
 
 Treat those files as secrets and do not commit them. Keys can be rotated or revoked at any time
 on the [API keys page](https://app.requesty.ai/api-keys).

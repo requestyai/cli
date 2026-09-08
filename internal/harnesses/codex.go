@@ -30,11 +30,12 @@ type codexProvider struct {
 	Name        string            `toml:"name"`
 	BaseURL     string            `toml:"base_url"`
 	HTTPHeaders map[string]string `toml:"http_headers"`
+	Auth        codexProviderAuth `toml:"auth"`
 }
 
-type codexAuth struct {
-	AuthMode     string `json:"auth_mode"`
-	OpenAIAPIKey string `json:"OPENAI_API_KEY"`
+type codexProviderAuth struct {
+	Command string   `toml:"command"`
+	Args    []string `toml:"args"`
 }
 
 type CodexHarness struct {
@@ -60,8 +61,8 @@ func (c *CodexHarness) Name() string {
 
 func (c *CodexHarness) Description() []string {
 	return []string{
-		"takes a backup of current config.toml and auth.json",
-		"writes a config.toml and auth.json to route through Requesty",
+		"takes a backup of current config.toml",
+		"writes a config.toml to route through Requesty",
 	}
 }
 
@@ -75,20 +76,14 @@ func (c *CodexHarness) Status() (Status, error) {
 	}
 
 	configPath := c.configPath()
-	authPath := c.authPath()
-	status.Files = append(status.Files, configPath, authPath)
+	status.Files = append(status.Files, configPath)
 
 	configExists, err := pathExists(configPath)
 	if err != nil {
 		return status, fmt.Errorf("failed to check file exists: %w", err)
 	}
 
-	authExists, err := pathExists(authPath)
-	if err != nil {
-		return status, fmt.Errorf("failed to check file exists: %w", err)
-	}
-
-	if !configExists || !authExists {
+	if !configExists {
 		status.Configured = false
 		return status, nil
 	}
@@ -105,7 +100,8 @@ func (c *CodexHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to unmarshal: %w", err)
 	}
 
-	if config.ModelProvider == codexModelProvider {
+	provider, providerExists := config.ModelProviders[codexModelProvider]
+	if config.ModelProvider == codexModelProvider && providerExists && provider.Auth.Command != "" {
 		status.Configured = true
 	} else {
 		status.Configured = false
@@ -139,6 +135,10 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 				"http_headers": map[string]any{
 					"X-Title": "OpenAI Codex",
 				},
+				"auth": map[string]any{
+					"command": "requesty",
+					"args":    []string{"auth", "token"},
+				},
 			},
 		},
 	})
@@ -146,21 +146,8 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 		return fmt.Errorf("failed to merge config file: %w", err)
 	}
 
-	authPath := c.authPath()
-
-	auth, err := mergeOrCreateJSONConfigFile(authPath, map[string]any{
-		"auth_mode":      "apikey",
-		"OPENAI_API_KEY": c.config.APIKey,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to merge auth file: %w", err)
-	}
-
 	if err := backupAndWriteConfigFileAsTOML(configPath, &config); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
-	}
-	if err := backupAndWriteConfigFileAsJSON(authPath, &auth); err != nil {
-		return fmt.Errorf("failed to write auth file: %w", err)
 	}
 
 	return nil
@@ -177,6 +164,10 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 				HTTPHeaders: map[string]string{
 					"X-Title": "OpenAI Codex",
 				},
+				Auth: codexProviderAuth{
+					Command: "requesty",
+					Args:    []string{"auth", "token"},
+				},
 			},
 		},
 		ModelReasoningEffort:            "high",
@@ -189,22 +180,9 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
-	auth := codexAuth{
-		AuthMode:     "apikey",
-		OpenAIAPIKey: c.config.APIKey,
-	}
-
-	if err := backupAndWriteConfigFileAsJSON(c.authPath(), &auth); err != nil {
-		return fmt.Errorf("failed to write auth file: %w", err)
-	}
-
 	return nil
 }
 
 func (c *CodexHarness) configPath() string {
 	return filepath.Join(c.configDir, "config.toml")
-}
-
-func (c *CodexHarness) authPath() string {
-	return filepath.Join(c.configDir, "auth.json")
 }
