@@ -51,8 +51,18 @@ func newTestClient(t *testing.T, status int, reply string) (*Client, *recorder) 
 	return New(config.Config{APIBaseURL: server.URL, APIKey: "test-key"}), seen
 }
 
+func mustParseTime(t *testing.T, value string) *time.Time {
+	t.Helper()
+
+	parsed, err := time.Parse(time.RFC3339, value)
+	require.NoError(t, err)
+
+	return &parsed
+}
+
 func TestClientAPIKeys(t *testing.T) {
 	reply := `{"keys":[{"id":"key-1","name":"production","monthly_limit":"500","monthly_spend":"12.5",` +
+		`"expires_at":"2026-12-31T23:59:59Z",` +
 		`"permissions":{"manage":"read","completions":"write"},"labels":{"env":"prod"},` +
 		`"created_by":{"id":"user-1","email":"you@example.com"},"group":{"id":"group-1"}}]}`
 	client, seen := newTestClient(t, http.StatusOK, reply)
@@ -68,6 +78,7 @@ func TestClientAPIKeys(t *testing.T) {
 		Name:         "production",
 		MonthlyLimit: decimal.RequireFromString("500"),
 		MonthlySpend: decimal.RequireFromString("12.5"),
+		ExpiresAt:    mustParseTime(t, "2026-12-31T23:59:59Z"),
 		Permissions:  APIKeyPermissions{Manage: APIKeyPermissionRead, Completions: APIKeyPermissionWrite},
 		Labels:       map[string]string{"env": "prod"},
 		CreatedBy:    &APIKeyUser{ID: "user-1", Email: "you@example.com"},
@@ -77,6 +88,7 @@ func TestClientAPIKeys(t *testing.T) {
 
 func TestClientAPIKey(t *testing.T) {
 	reply := `{"id":"key-1","name":"production","logging":true,"monthly_limit":"0","monthly_spend":"3",` +
+		`"expires_at":"2026-12-31T23:59:59Z",` +
 		`"permissions":{"manage":"none","completions":"write"},"group":{"id":"group-1"}}`
 	client, seen := newTestClient(t, http.StatusOK, reply)
 
@@ -91,6 +103,7 @@ func TestClientAPIKey(t *testing.T) {
 		Logging:      true,
 		MonthlyLimit: decimal.RequireFromString("0"),
 		MonthlySpend: decimal.RequireFromString("3"),
+		ExpiresAt:    mustParseTime(t, "2026-12-31T23:59:59Z"),
 		Permissions:  APIKeyPermissions{Manage: APIKeyPermissionNone, Completions: APIKeyPermissionWrite},
 		Group:        &APIKeyGroup{ID: "group-1"},
 	}, key)
