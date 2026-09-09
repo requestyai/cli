@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/requestyai/cli/internal/client"
+	"github.com/requestyai/cli/internal/util"
 	"github.com/shopspring/decimal"
 	"github.com/spf13/cobra"
 )
@@ -100,6 +101,15 @@ func formatTime(moment time.Time) string {
 	}
 
 	return moment.Format(time.RFC3339)
+}
+
+// formatExpiry renders when a key stops working, or that it never does.
+func formatExpiry(moment *time.Time) string {
+	if moment == nil {
+		return util.NeverExpires
+	}
+
+	return formatTime(*moment)
 }
 
 // formatDate renders a timestamp as a calendar date, to keep table rows narrow.

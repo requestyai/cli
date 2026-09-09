@@ -39,12 +39,13 @@ type APIKeyGroup struct {
 }
 
 // APIKey is a key as it appears in the organization listing. A MonthlyLimit of
-// zero means the key is not capped.
+// zero means the key is not capped, and a nil ExpiresAt means it never expires.
 type APIKey struct {
 	ID           string            `json:"id"`
 	Name         string            `json:"name"`
 	MonthlyLimit decimal.Decimal   `json:"monthly_limit"`
 	MonthlySpend decimal.Decimal   `json:"monthly_spend"`
+	ExpiresAt    *time.Time        `json:"expires_at,omitempty"`
 	Permissions  APIKeyPermissions `json:"permissions"`
 	Labels       map[string]string `json:"labels,omitempty"`
 	CreatedBy    *APIKeyUser       `json:"created_by,omitempty"`
@@ -59,6 +60,7 @@ type APIKeyDetails struct {
 	Logging      bool              `json:"logging"`
 	MonthlyLimit decimal.Decimal   `json:"monthly_limit"`
 	MonthlySpend decimal.Decimal   `json:"monthly_spend"`
+	ExpiresAt    *time.Time        `json:"expires_at,omitempty"`
 	Permissions  APIKeyPermissions `json:"permissions"`
 	Group        *APIKeyGroup      `json:"group,omitempty"`
 }
