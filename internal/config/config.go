@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -22,6 +23,20 @@ type Config struct {
 	APIKey        string `json:"api_key"`
 	RouterBaseURL string `json:"router_base_url"`
 	APIBaseURL    string `json:"api_base_url,omitempty"`
+}
+
+// ResolveAPIBaseURL returns the management API address: the configured one,
+// else the one implied by the router address, else the production default.
+// The fallback matters before onboarding, when the config file does not exist.
+func (c Config) ResolveAPIBaseURL() string {
+	if c.APIBaseURL != "" {
+		return c.APIBaseURL
+	}
+	if c.RouterBaseURL != "" {
+		return strings.Replace(c.RouterBaseURL, "router", "api-v2", 1)
+	}
+
+	return DefaultAPIBaseURL
 }
 
 // Load reads the settings. A missing file is not an error: it means the user
