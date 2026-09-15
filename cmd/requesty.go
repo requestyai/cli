@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
+	"github.com/requestyai/cli/internal/oauth"
 	"github.com/requestyai/cli/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -25,6 +27,9 @@ func Run() error {
 type environment struct {
 	config      config.Config
 	apiv2Client *client.Client
+
+	// login runs the browser sign-in. nil means the real OAuth flow.
+	login func(context.Context, oauth.Options) (*oauth.Token, error)
 }
 
 func newEnvironment() (environment, error) {
@@ -36,6 +41,7 @@ func newEnvironment() (environment, error) {
 	return environment{
 		config:      cfg,
 		apiv2Client: client.New(cfg),
+		login:       oauth.Login,
 	}, nil
 }
 
@@ -59,6 +65,7 @@ func newRootCommand(env environment) *cobra.Command {
 	}
 
 	root.AddCommand(
+		newLoginCommand(env),
 		newAuthCommand(env),
 		newAPIKeysCommand(env),
 		newGroupsCommand(env),

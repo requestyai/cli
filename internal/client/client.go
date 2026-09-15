@@ -31,11 +31,7 @@ func New(cfg config.Config) *Client {
 }
 
 func (c *Client) apiBaseURL() (string, error) {
-	if c.config.APIBaseURL != "" {
-		return c.config.APIBaseURL, nil
-	}
-
-	return strings.Replace(c.config.RouterBaseURL, "router", "api-v2", 1), nil
+	return c.config.ResolveAPIBaseURL(), nil
 }
 
 func (c *Client) authorize(req *http.Request) {
