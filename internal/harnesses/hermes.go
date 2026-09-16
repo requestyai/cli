@@ -112,6 +112,10 @@ func (h *HermesHarness) Status() (Status, error) {
 	return status, nil
 }
 
+func (h *HermesHarness) Launch(LaunchOptions) error {
+	return launchNotImplemented(h.Name())
+}
+
 func (h *HermesHarness) Configure(opts ConfigureOptions) error {
 	if opts.Overwrite {
 		return h.configureOverwrite(opts)

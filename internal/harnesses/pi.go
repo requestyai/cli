@@ -125,6 +125,10 @@ func (p *PiHarness) Status() (Status, error) {
 	return status, nil
 }
 
+func (p *PiHarness) Launch(LaunchOptions) error {
+	return launchNotImplemented(p.Name())
+}
+
 func (p *PiHarness) Configure(opts ConfigureOptions) error {
 	if opts.Overwrite {
 		return p.configureOverwrite(opts)

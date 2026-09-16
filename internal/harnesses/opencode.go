@@ -97,6 +97,10 @@ func (o *OpenCodeHarness) Status() (Status, error) {
 	return status, nil
 }
 
+func (o *OpenCodeHarness) Launch(LaunchOptions) error {
+	return launchNotImplemented(o.Name())
+}
+
 func (o *OpenCodeHarness) Configure(opts ConfigureOptions) error {
 	if opts.Overwrite {
 		return o.configureOverwrite(opts)

@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/requestyai/cli/internal/config"
@@ -69,8 +71,9 @@ func (c *CodexHarness) Description() []string {
 func (c *CodexHarness) Status() (Status, error) {
 	status := Status{}
 
-	if _, err := exec.LookPath("codex"); err == nil {
+	if path, err := exec.LookPath("codex"); err == nil {
 		status.Executable = true
+		status.ExecutablePath = path
 	} else if !errors.Is(err, exec.ErrNotFound) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
@@ -185,4 +188,73 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 
 func (c *CodexHarness) configPath() string {
 	return filepath.Join(c.configDir, "config.toml")
+}
+
+// codexEfforts maps Launch effort levels onto Codex's model_reasoning_effort.
+var codexEfforts = map[string]string{
+	EffortMinimal: "minimal",
+	EffortLow:     "low",
+	EffortMedium:  "medium",
+	EffortHigh:    "high",
+	EffortXHigh:   "xhigh",
+}
+
+// Launch replaces this process with Codex pointed at Requesty using
+// `-c key=value` overrides, which outrank ~/.codex/config.toml for this run
+// only. Nothing is written to disk; the key is fetched on demand through
+// `requesty auth token`, so it appears in neither argv nor the environment.
+func (c *CodexHarness) Launch(opts LaunchOptions) error {
+	status, err := c.Status()
+	if err != nil {
+		return fmt.Errorf("failed to check %s: %w", c.Name(), err)
+	}
+	if !status.Executable {
+		return fmt.Errorf("`codex` is not on PATH; install Codex (https://developers.openai.com/codex/cli) and try again")
+	}
+
+	effort, err := mapEffort(c.Name(), codexEfforts, opts.Effort)
+	if err != nil {
+		return err
+	}
+
+	provider := "model_providers." + codexModelProvider
+	argv := []string{
+		"codex",
+		"-c", "model_provider=" + tomlString(codexModelProvider),
+		"-c", provider + ".name=" + tomlString("Requesty"),
+		"-c", provider + ".base_url=" + tomlString(c.config.RouterBaseURL+"/v1"),
+		"-c", provider + ".http_headers.X-Title=" + tomlString("OpenAI Codex"),
+		"-c", provider + ".auth.command=" + tomlString(requestyExecutable()),
+		"-c", provider + ".auth.args=[" + tomlString("auth") + "," + tomlString("token") + "]",
+		"-c", "model_supports_reasoning_summaries=false",
+	}
+	if opts.Model != "" {
+		argv = append(argv, "-m", opts.Model)
+	}
+	if effort != "" {
+		argv = append(argv, "-c", "model_reasoning_effort="+tomlString(effort))
+	}
+	argv = append(argv, opts.Args...)
+
+	env := opts.Env
+	if env == nil {
+		env = os.Environ()
+	}
+
+	if err := execProcess(status.ExecutablePath, argv, env); err != nil {
+		return fmt.Errorf("failed to launch codex: %w", err)
+	}
+
+	return nil
+}
+
+// tomlString quotes s as a TOML string for a Codex -c override. Codex parses
+// the value side as TOML, so unquoted text with spaces or slashes would be
+// rejected. Literal strings are preferred because they need no escaping.
+func tomlString(s string) string {
+	if !strings.ContainsAny(s, "'\n\r") {
+		return "'" + s + "'"
+	}
+
+	return strconv.Quote(s)
 }

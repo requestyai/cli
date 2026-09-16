@@ -154,6 +154,10 @@ func (d *DeepSeekHarness) Status() (Status, error) {
 	return status, nil
 }
 
+func (d *DeepSeekHarness) Launch(LaunchOptions) error {
+	return launchNotImplemented(d.Name())
+}
+
 func (d *DeepSeekHarness) Configure(opts ConfigureOptions) error {
 	if opts.Overwrite {
 		return d.configureOverwrite(opts)
