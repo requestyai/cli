@@ -7,6 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
+	"github.com/requestyai/cli/internal/harnesses"
 	"github.com/requestyai/cli/internal/oauth"
 	"github.com/requestyai/cli/internal/tui"
 	"github.com/spf13/cobra"
@@ -30,6 +31,11 @@ type environment struct {
 
 	// login runs the browser sign-in. nil means the real OAuth flow.
 	login func(context.Context, oauth.Options) (*oauth.Token, error)
+
+	// launchHarness starts a harness through Requesty. nil means the harness's
+	// own Launch, which replaces the current process and so cannot run under
+	// a test.
+	launchHarness func(harnesses.Harness, harnesses.LaunchOptions) error
 }
 
 func newEnvironment() (environment, error) {
@@ -39,9 +45,10 @@ func newEnvironment() (environment, error) {
 	}
 
 	return environment{
-		config:      cfg,
-		apiv2Client: client.New(cfg),
-		login:       oauth.Login,
+		config:        cfg,
+		apiv2Client:   client.New(cfg),
+		login:         oauth.Login,
+		launchHarness: harnesses.Harness.Launch,
 	}, nil
 }
 
@@ -71,6 +78,7 @@ func newRootCommand(env environment) *cobra.Command {
 		newGroupsCommand(env),
 		newAccessListsCommand(env),
 	)
+	root.AddCommand(newHarnessCommands(env)...)
 
 	return root
 }

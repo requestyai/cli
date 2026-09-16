@@ -9,7 +9,9 @@ import (
 type Status struct {
 	Files      []string
 	Executable bool
-	Configured bool
+
+	ExecutablePath string
+	Configured     bool
 }
 
 type ConfigureOptions struct {
@@ -17,11 +19,25 @@ type ConfigureOptions struct {
 	Overwrite bool
 }
 
+type LaunchOptions struct {
+	// Model overrides the harness's default model for this run. Empty leaves
+	// whatever the harness would pick on its own (including a model our
+	// Configure wrote into its settings file earlier).
+	Model string
+	// Effort is one of Efforts, or empty for the harness default.
+	Effort string
+	// Args is passed to the harness binary untouched, after our own flags.
+	Args []string
+	// Env is the environment to start from. nil means os.Environ().
+	Env []string
+}
+
 type Harness interface {
 	Name() string
 	Description() []string
 	Status() (Status, error)
 	Configure(ConfigureOptions) error
+	Launch(LaunchOptions) error
 }
 
 func Harnesses(config config.Config) ([]Harness, error) {
