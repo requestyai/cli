@@ -30,7 +30,7 @@ func TestClientUsage(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(config.Config{APIBaseURL: server.URL, APIKey: "test-key"})
+	client := New(config.Config{RouterBaseURL: server.URL, APIKey: "test-key"})
 	usage, err := client.Usage(context.Background(), UsageInput{
 		Start:      start,
 		End:        end,

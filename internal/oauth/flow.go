@@ -57,6 +57,10 @@ type Options struct {
 	// launcher. A failure is reported on Status but does not abort the login.
 	OpenBrowser func(url string) error
 
+	// OnAuthorizeURL, when set, is told the address the browser is sent to,
+	// for front ends that draw it themselves rather than reading Status.
+	OnAuthorizeURL func(url string)
+
 	// HTTPClient sends the token request. Defaults to one with a timeout.
 	HTTPClient *http.Client
 }
@@ -100,6 +104,9 @@ func Login(ctx context.Context, opts Options) (*Token, error) {
 
 	redirectURI := server.RedirectURI()
 	authorizeURL := authorizeURL(apiBaseURL, redirectURI, state, Challenge(verifier))
+	if opts.OnAuthorizeURL != nil {
+		opts.OnAuthorizeURL(authorizeURL)
+	}
 
 	_, _ = fmt.Fprintf(status,
 		"Opening your browser to sign in to Requesty.\n\nIf it does not open, visit this address:\n\n  %s\n\n",

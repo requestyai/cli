@@ -97,10 +97,12 @@ func TestLoginCompletesAuthorizationCodeFlow(t *testing.T) {
 	defer server.Close()
 
 	var status bytes.Buffer
+	var told string
 	token, err := Login(context.Background(), Options{
-		APIBaseURL:  server.URL + "/",
-		Status:      &status,
-		OpenBrowser: fakeBrowser(t),
+		APIBaseURL:     server.URL + "/",
+		Status:         &status,
+		OpenBrowser:    fakeBrowser(t),
+		OnAuthorizeURL: func(url string) { told = url },
 	})
 	require.NoError(t, err)
 
@@ -137,8 +139,10 @@ func TestLoginCompletesAuthorizationCodeFlow(t *testing.T) {
 	// The verifier the CLI redeemed is the one behind the challenge it sent.
 	assert.Equal(t, auth.authorize.Get("code_challenge"), Challenge(auth.tokenForm.Get("code_verifier")))
 
-	// The URL is always printed so headless users can paste it.
+	// The URL is always printed so headless users can paste it, and handed to
+	// any front end that wants to draw it.
 	assert.Contains(t, status.String(), server.URL+"/v1/oauth/authorize?")
+	assert.True(t, strings.HasPrefix(told, server.URL+"/v1/oauth/authorize?"), told)
 }
 
 func TestLoginReportsDeniedConsent(t *testing.T) {

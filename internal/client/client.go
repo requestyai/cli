@@ -30,10 +30,6 @@ func New(cfg config.Config) *Client {
 	}
 }
 
-func (c *Client) apiBaseURL() (string, error) {
-	return c.config.ResolveAPIBaseURL(), nil
-}
-
 func (c *Client) authorize(req *http.Request) {
 	if c.config.APIKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
@@ -43,17 +39,12 @@ func (c *Client) authorize(req *http.Request) {
 // manageURL builds a management API address. Each element is escaped, so an
 // identifier that came from a user cannot reach into another path.
 func (c *Client) manageURL(elements ...string) (string, error) {
-	apiBaseURL, err := c.apiBaseURL()
-	if err != nil {
-		return "", fmt.Errorf("failed to get api base url: %w", err)
-	}
-
 	escaped := make([]string, 0, len(elements))
 	for _, element := range elements {
 		escaped = append(escaped, url.PathEscape(element))
 	}
 
-	endpoint := fmt.Sprintf("%s/v1/manage/%s", apiBaseURL, strings.Join(escaped, "/"))
+	endpoint := fmt.Sprintf("%s/v1/manage/%s", c.config.APIBaseURL(), strings.Join(escaped, "/"))
 	return endpoint, nil
 }
 

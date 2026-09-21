@@ -1,14 +1,12 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
-	"github.com/requestyai/cli/internal/harnesses"
-	"github.com/requestyai/cli/internal/oauth"
+	"github.com/requestyai/cli/internal/onboarding"
 	"github.com/requestyai/cli/internal/tui"
 	"github.com/spf13/cobra"
 )
@@ -23,19 +21,10 @@ func Run() error {
 	return newRootCommand(env).Execute()
 }
 
-// environment is everything the commands need from the outside world, kept
-// behind function fields so tests can stand in for the gateway and the UI.
+// environment is the loaded config and the gateway client the commands share.
 type environment struct {
 	config      config.Config
 	apiv2Client *client.Client
-
-	// login runs the browser sign-in. nil means the real OAuth flow.
-	login func(context.Context, oauth.Options) (*oauth.Token, error)
-
-	// launchHarness starts a harness through Requesty. nil means the harness's
-	// own Launch, which replaces the current process and so cannot run under
-	// a test.
-	launchHarness func(harnesses.Harness, harnesses.LaunchOptions) error
 }
 
 func newEnvironment() (environment, error) {
@@ -45,11 +34,23 @@ func newEnvironment() (environment, error) {
 	}
 
 	return environment{
-		config:        cfg,
-		apiv2Client:   client.New(cfg),
-		login:         oauth.Login,
-		launchHarness: harnesses.Harness.Launch,
+		config:      cfg,
+		apiv2Client: client.New(cfg),
 	}, nil
+}
+
+// ensureAPIKey is the config to launch with, onboarding first when no key is
+// saved yet. harness is the display name of the harness about to start, or
+// empty for the dashboard.
+func (env environment) ensureAPIKey(cmd *cobra.Command, harness string) (config.Config, error) {
+	if env.config.APIKey != "" {
+		return env.config, nil
+	}
+
+	return onboarding.Run(cmd.Context(), onboarding.Options{
+		Config:  env.config,
+		Harness: harness,
+	})
 }
 
 func newRootCommand(env environment) *cobra.Command {
@@ -62,8 +63,13 @@ func newRootCommand(env environment) *cobra.Command {
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		RunE: func(_ *cobra.Command, _ []string) error {
-			if _, err := tea.NewProgram(tui.NewRoot(env.config)).Run(); err != nil {
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cfg, err := env.ensureAPIKey(cmd, "")
+			if err != nil {
+				return err
+			}
+
+			if _, err := tea.NewProgram(tui.NewRoot(cfg)).Run(); err != nil {
 				return fmt.Errorf("failed to run program: %w", err)
 			}
 

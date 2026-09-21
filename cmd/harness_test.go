@@ -10,25 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type recordedLaunch struct {
-	harness harnesses.Harness
-	opts    harnesses.LaunchOptions
-	called  bool
-}
-
-func recordingEnvironment(cfg config.Config) (environment, *recordedLaunch) {
-	recorded := &recordedLaunch{}
-	env := environment{
-		config: cfg,
-		launchHarness: func(harness harnesses.Harness, opts harnesses.LaunchOptions) error {
-			recorded.harness, recorded.opts, recorded.called = harness, opts, true
-			return nil
-		},
-	}
-
-	return env, recorded
-}
-
 func TestHarnessCommandsAreRegistered(t *testing.T) {
 	command := newRootCommand(environment{})
 
@@ -40,87 +21,121 @@ func TestHarnessCommandsAreRegistered(t *testing.T) {
 	}
 }
 
-func TestHarnessCommandPassesLeadingFlagsAndPassthrough(t *testing.T) {
-	env, recorded := recordingEnvironment(config.Config{APIKey: "my-api-key"})
-	command := newRootCommand(env)
-	command.SetArgs([]string{"claude", "--model", "anthropic/claude-fable-5", "--reasoning-effort=high", "--dangerously-skip-permissions", "-p", "hi"})
+func TestParseHarnessArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want harnesses.LaunchOptions
+	}{
+		{
+			name: "no arguments",
+			args: nil,
+			want: harnesses.LaunchOptions{},
+		},
+		{
+			name: "leading flags then passthrough",
+			args: []string{"--model", "anthropic/claude-fable-5", "--reasoning-effort=high", "--dangerously-skip-permissions", "-p", "hi"},
+			want: harnesses.LaunchOptions{
+				Model:  "anthropic/claude-fable-5",
+				Effort: harnesses.EffortHigh,
+				Args:   []string{"--dangerously-skip-permissions", "-p", "hi"},
+			},
+		},
+		{
+			name: "equals form for both flags",
+			args: []string{"--model=openai/gpt-5", "--reasoning-effort=low"},
+			want: harnesses.LaunchOptions{Model: "openai/gpt-5", Effort: harnesses.EffortLow},
+		},
+		{
+			// The second --model belongs to the harness because a foreign flag came first.
+			name: "stops at first foreign argument",
+			args: []string{"--full-auto", "--model", "theirs"},
+			want: harnesses.LaunchOptions{Args: []string{"--full-auto", "--model", "theirs"}},
+		},
+		{
+			name: "double dash ends our flags",
+			args: []string{"--model", "openai/gpt-5", "--", "--model", "theirs"},
+			want: harnesses.LaunchOptions{Model: "openai/gpt-5", Args: []string{"--model", "theirs"}},
+		},
+		{
+			name: "bare double dash passes nothing",
+			args: []string{"--"},
+			want: harnesses.LaunchOptions{Args: []string{}},
+		},
+	}
 
-	require.NoError(t, command.Execute())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseHarnessArgs(tt.args)
 
-	require.True(t, recorded.called)
-	assert.Equal(t, "Claude Code", recorded.harness.Name())
-	assert.Equal(t, "anthropic/claude-fable-5", recorded.opts.Model)
-	assert.Equal(t, harnesses.EffortHigh, recorded.opts.Effort)
-	assert.Equal(t, []string{"--dangerously-skip-permissions", "-p", "hi"}, recorded.opts.Args)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
-func TestHarnessCommandStopsAtFirstForeignArgument(t *testing.T) {
-	env, recorded := recordingEnvironment(config.Config{APIKey: "my-api-key"})
-	command := newRootCommand(env)
-	// The second --model belongs to codex because a codex flag came first.
-	command.SetArgs([]string{"codex", "--full-auto", "--model", "theirs"})
+func TestParseHarnessArgsErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "unknown effort",
+			args: []string{"--reasoning-effort", "turbo"},
+			want: `--reasoning-effort must be one of minimal, low, medium, high, xhigh, max (got "turbo")`,
+		},
+		{
+			name: "model without value",
+			args: []string{"--model"},
+			want: "--model requires a value",
+		},
+		{
+			name: "effort without value",
+			args: []string{"--reasoning-effort"},
+			want: "--reasoning-effort requires a value",
+		},
+		{
+			name: "empty equals value",
+			args: []string{"--model="},
+			want: "--model requires a value",
+		},
+		{
+			name: "blank value",
+			args: []string{"--model", "  "},
+			want: "--model requires a value",
+		},
+	}
 
-	require.NoError(t, command.Execute())
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseHarnessArgs(tt.args)
 
-	assert.Empty(t, recorded.opts.Model)
-	assert.Equal(t, []string{"--full-auto", "--model", "theirs"}, recorded.opts.Args)
+			require.EqualError(t, err, tt.want)
+		})
+	}
 }
 
-func TestHarnessCommandDoubleDashEndsOurFlags(t *testing.T) {
-	env, recorded := recordingEnvironment(config.Config{APIKey: "my-api-key"})
-	command := newRootCommand(env)
-	command.SetArgs([]string{"codex", "--model", "openai/gpt-5", "--", "--model", "theirs"})
+func TestParseHarnessArgsHelp(t *testing.T) {
+	for _, args := range [][]string{{"-h"}, {"--help"}, {"--model", "x", "--help"}} {
+		_, err := parseHarnessArgs(args)
+		assert.ErrorIs(t, err, errHarnessHelp, "%v", args)
+	}
 
-	require.NoError(t, command.Execute())
-
-	assert.Equal(t, "openai/gpt-5", recorded.opts.Model)
-	assert.Equal(t, []string{"--model", "theirs"}, recorded.opts.Args)
+	// After the harness's own flags begin, -h belongs to the harness.
+	got, err := parseHarnessArgs([]string{"-p", "hi", "--help"})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"-p", "hi", "--help"}, got.Args)
 }
 
-func TestHarnessCommandRejectsUnknownEffort(t *testing.T) {
-	env, recorded := recordingEnvironment(config.Config{APIKey: "my-api-key"})
-	command := newRootCommand(env)
-	command.SetArgs([]string{"claude", "--reasoning-effort", "turbo"})
-
-	err := command.Execute()
-
-	require.EqualError(t, err, `--reasoning-effort must be one of minimal, low, medium, high, xhigh, max (got "turbo")`)
-	assert.False(t, recorded.called)
-}
-
-func TestHarnessCommandRejectsFlagWithoutValue(t *testing.T) {
-	env, recorded := recordingEnvironment(config.Config{APIKey: "my-api-key"})
-	command := newRootCommand(env)
-	command.SetArgs([]string{"claude", "--model"})
-
-	require.EqualError(t, command.Execute(), "--model requires a value")
-	assert.False(t, recorded.called)
-}
-
-func TestHarnessCommandRequiresAPIKey(t *testing.T) {
-	env, recorded := recordingEnvironment(config.Config{})
-	command := newRootCommand(env)
-	command.SetArgs([]string{"codex"})
-
-	require.EqualError(t, command.Execute(), "no Requesty API key configured; run `requesty` to set one up")
-	assert.False(t, recorded.called)
-}
-
-func TestHarnessCommandHelpDoesNotLaunch(t *testing.T) {
-	env, recorded := recordingEnvironment(config.Config{APIKey: "my-api-key"})
-	command := newRootCommand(env)
+func TestHarnessCommandHelpShowsOurFlags(t *testing.T) {
+	command := newRootCommand(environment{config: config.Config{APIKey: "my-api-key"}})
 	var output bytes.Buffer
 	command.SetOut(&output)
 	command.SetArgs([]string{"claude", "--help"})
 
 	require.NoError(t, command.Execute())
 
-	assert.False(t, recorded.called)
 	assert.Contains(t, output.String(), "--reasoning-effort")
 	assert.Contains(t, output.String(), "passed to `claude`")
-}
-
-func TestWithRouterDefaultFillsMissingURL(t *testing.T) {
-	assert.Equal(t, config.DefaultRouterBaseURL, withRouterDefault(config.Config{APIKey: "k"}).RouterBaseURL)
-	assert.Equal(t, "https://router.example.test", withRouterDefault(config.Config{RouterBaseURL: "https://router.example.test"}).RouterBaseURL)
 }

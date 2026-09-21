@@ -22,17 +22,15 @@ var errHarnessHelp = errors.New("help requested")
 // newHarnessCommands returns the `requesty <harness>` commands, each of which
 // starts a harness with Requesty injected for that run.
 func newHarnessCommands(env environment) []*cobra.Command {
-	cfg := withRouterDefault(env.config)
-
 	return []*cobra.Command{
-		newHarnessCommand(env, "claude", "Claude Code", func() (harnesses.Harness, error) {
+		newHarnessCommand(env, "claude", "Claude Code", func(cfg config.Config) (harnesses.Harness, error) {
 			dir, err := harnesses.DefaultConfigDirClaudeCode()
 			if err != nil {
 				return nil, err
 			}
 			return harnesses.NewClaudeHarness(cfg, dir), nil
 		}),
-		newHarnessCommand(env, "codex", "Codex", func() (harnesses.Harness, error) {
+		newHarnessCommand(env, "codex", "Codex", func(cfg config.Config) (harnesses.Harness, error) {
 			dir, err := harnesses.DefaultConfigDirCodex()
 			if err != nil {
 				return nil, err
@@ -43,9 +41,10 @@ func newHarnessCommands(env environment) []*cobra.Command {
 }
 
 // newHarnessCommand builds `requesty <binary>`. The harness is constructed
-// lazily so a machine without a resolvable home directory still gets a help
-// page and a clear error, rather than a missing command.
-func newHarnessCommand(env environment, binary, displayName string, newHarness func() (harnesses.Harness, error)) *cobra.Command {
+// lazily, from the config as it stands after any onboarding, so a machine
+// without a resolvable home directory still gets a help page and a clear
+// error, rather than a missing command.
+func newHarnessCommand(env environment, binary, displayName string, newHarness func(config.Config) (harnesses.Harness, error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   fmt.Sprintf("%s [--model <id>] [--reasoning-effort <level>] [-- ] [%s args...]", binary, binary),
 		Short: fmt.Sprintf("Launch %s through Requesty", displayName),
@@ -53,7 +52,8 @@ func newHarnessCommand(env environment, binary, displayName string, newHarness f
 			"Flags:\n" +
 			fmt.Sprintf("  %-28s %s\n", harnessModelFlag+" <id>", "Model to use for this run (any Requesty model id)") +
 			fmt.Sprintf("  %-28s %s\n", harnessEffortFlag+" <level>", "Reasoning effort: "+strings.Join(harnesses.Efforts, ", ")) +
-			fmt.Sprintf("  %-28s %s", "-h, --help", "Show this help"),
+			fmt.Sprintf("  %-28s %s\n\n", "-h, --help", "Show this help") +
+			fmt.Sprintf("Anything else, or everything after `--`, is passed to `%s` untouched.\n\n", binary),
 		// We take over parsing so harness flags are never interpreted as ours.
 		DisableFlagParsing:    true,
 		DisableFlagsInUseLine: true,
@@ -67,21 +67,17 @@ func newHarnessCommand(env environment, binary, displayName string, newHarness f
 				return err
 			}
 
-			if env.config.APIKey == "" {
-				return fmt.Errorf("no Requesty API key configured; run `requesty` to set one up")
+			cfg, err := env.ensureAPIKey(cmd, displayName)
+			if err != nil {
+				return err
 			}
 
-			harness, err := newHarness()
+			harness, err := newHarness(cfg)
 			if err != nil {
 				return fmt.Errorf("failed to set up %s: %w", displayName, err)
 			}
 
-			launch := env.launchHarness
-			if launch == nil {
-				launch = harnesses.Harness.Launch
-			}
-
-			return launch(harness, opts)
+			return harness.Launch(opts)
 		},
 	}
 
@@ -150,14 +146,4 @@ func setHarnessFlag(opts *harnesses.LaunchOptions, flag, value string) error {
 	}
 
 	return nil
-}
-
-// withRouterDefault fills in the production router when the config predates
-// the field, so a launch never hands a harness an empty base URL.
-func withRouterDefault(cfg config.Config) config.Config {
-	if cfg.RouterBaseURL == "" {
-		cfg.RouterBaseURL = config.DefaultRouterBaseURL
-	}
-
-	return cfg
 }
