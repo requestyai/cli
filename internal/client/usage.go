@@ -49,12 +49,7 @@ type UsageInput struct {
 // Usage returns the organization's usage for the requested period.
 // If End or Resolution is unset, the API's defaults are used.
 func (c *Client) Usage(ctx context.Context, input UsageInput) (map[string]UsageEntry, error) {
-	apiBaseURL, err := c.apiBaseURL()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get api base url: %w", err)
-	}
-
-	endpoint, err := url.Parse(fmt.Sprintf("%s/v1/manage/apikey/self/usage", apiBaseURL))
+	endpoint, err := url.Parse(fmt.Sprintf("%s/v1/manage/apikey/self/usage", c.config.APIBaseURL()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse url: %w", err)
 	}

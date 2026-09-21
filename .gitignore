@@ -30,6 +30,9 @@ go.work.sum
 # GoReleaser output
 dist/
 
+# Local build of the CLI
+/requesty
+
 # Editor/IDE
 .idea/
 # .vscode/

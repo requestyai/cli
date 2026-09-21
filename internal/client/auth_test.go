@@ -31,7 +31,7 @@ func TestClientCheckAPIKey(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := New(config.Config{APIBaseURL: server.URL, APIKey: "test-key"})
+			client := New(config.Config{RouterBaseURL: server.URL, APIKey: "test-key"})
 			err := client.CheckAPIKey(context.Background())
 
 			if tc.wantErr == nil {
@@ -49,7 +49,7 @@ func TestClientCheckAPIKeyUnexpectedStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(config.Config{APIBaseURL: server.URL, APIKey: "test-key"})
+	client := New(config.Config{RouterBaseURL: server.URL, APIKey: "test-key"})
 	err := client.CheckAPIKey(context.Background())
 
 	require.Error(t, err)

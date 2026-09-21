@@ -41,12 +41,15 @@ a new terminal, or run the `source` command it prints, then run `requesty`.
 
 ## First run
 
-**Paste an API key**
+**Sign in with your browser**
 
-On first run the CLI asks for a key. Create one on the
-[API keys page](https://app.requesty.ai/api-keys). The key is checked against the gateway before
-it is saved, so a typo is rejected here instead of failing later. It is stored in
-`~/.requesty/config.json` and reused on every later run, so this happens once.
+The first time you run `requesty`, `requesty claude` or `requesty codex` on a machine without a key,
+the CLI opens with a welcome page that says what is about to happen. Press enter and it signs you in
+to Requesty in your browser; once you approve, it creates an API key in your account, named after
+this machine (`Requesty CLI (my-laptop)`), and saves it to `~/.requesty/config.json`. The app then
+carries on to its dashboard, or the harness you asked for starts. Every later run reuses that key,
+so this happens once. The key shows up on the [API keys page](https://app.requesty.ai/api-keys)
+like any other, and can be revoked there.
 
 ```text
 ╭──────────────────────────────────────────────────────────────────╮
@@ -54,13 +57,39 @@ it is saved, so a typo is rejected here instead of failing later. It is stored i
 │ One gateway for every model, in every tool you use, or app you   │
 │ build.                                                           │
 │                                                                  │
-│ Paste an API key from https://app.requesty.ai/api-keys to begin. │
+│ Sign in with your browser to get started. This creates an API    │
+│ key named "Requesty CLI (my-laptop)" in your Requesty account    │
+│ and saves it to /home/you/.requesty/config.json.                 │
+│ Claude Code starts as soon as the key is saved.                  │
 │                                                                  │
-│ ❯ rqsty-...                                                      │
+│ Working over SSH, or already have a key? Quit and run `requesty  │
+│ login --api-key <key>` instead.                                  │
 │                                                                  │
-│ enter continue · ctrl+c quit                                 dev │
+│ enter sign in · q/esc quit                                   dev │
 ╰──────────────────────────────────────────────────────────────────╯
 ```
+
+While the browser is open a dialog shows the sign-in address, for when the browser did not open on
+its own; `esc` cancels. The key is created in your group. If you belong to several groups a dialog
+asks which one; if you belong to none it is a personal key. Organizations that require keys to live
+in a group will say so, in which case ask an admin to add you to one.
+
+Without a terminal to ask on (a script, a CI job) a harness launch stops and tells you to run
+`requesty login` first.
+
+**`requesty login`**
+
+`requesty login` runs the same sign-in from the command line. Use it to set up a machine before
+launching anything, to pick a group without being asked (`--group Engineering`), or to replace a
+key that was revoked or has expired. When a working key is already saved it does nothing unless
+you pass `--force`.
+
+**Over SSH, or with a key you already have**
+
+The browser hands the sign-in back to the CLI on `127.0.0.1`, which does not work over SSH. Create
+a key on the [API keys page](https://app.requesty.ai/api-keys) and run
+`requesty login --api-key <key>` instead. The key is checked against the gateway before it is
+saved, so a typo is rejected here instead of failing later.
 
 **Pick a harness**
 
@@ -159,8 +188,14 @@ through `requesty auth token`; other harnesses may also store it in their own co
 is how they authenticate. All files containing the key are written so that only your user can
 read them.
 
+A key created by signing in can make completions and read its own usage, nothing more. The
+management subcommands (`requesty api-keys`, `requesty groups`, `requesty access-lists`) need a
+key with manage permissions from the [API keys page](https://app.requesty.ai/api-keys). The
+short-lived token from the browser sign-in is used once to create the key and is never stored.
+
 Treat those files as secrets and do not commit them. Keys can be rotated or revoked at any time
-on the [API keys page](https://app.requesty.ai/api-keys).
+on the [API keys page](https://app.requesty.ai/api-keys); run `requesty login` afterwards to get
+a new one.
 
 ## Configuration
 
@@ -247,13 +282,28 @@ gofmt -l .          # CI fails if this prints anything
 **A harness is listed but cannot be configured.** Its executable was not found on your `PATH`.
 Install the harness, then refresh the list.
 
-**`That key was not recognised`.** The gateway does not accept the key you pasted. Copy it again
-from the [API keys page](https://app.requesty.ai/api-keys).
+**`that API key was not recognised`.** The gateway does not accept the key you gave
+`requesty login --api-key`. Copy it again from the [API keys page](https://app.requesty.ai/api-keys).
 
-**`Could not load usage`.** The usage panel calls the management API with your key. A `401` means
-the key was revoked or has expired: create a new one on the
-[API keys page](https://app.requesty.ai/api-keys) and delete `~/.requesty/config.json` to
-re-onboard. Routing itself is unaffected by this panel.
+**The browser never comes back to the terminal.** The sign-in finishes by redirecting your browser
+to `127.0.0.1` on the machine running the CLI, so it cannot complete over SSH or in a container.
+Run `requesty login --api-key <key>` with a key from the
+[API keys page](https://app.requesty.ai/api-keys) instead, or forward the port shown in the
+sign-in URL.
+
+**`no Requesty API key configured; run requesty login`.** The CLI ran without a key and without a
+terminal to ask on. Run `requesty login` once, interactively, or `requesty login --api-key <key>`.
+
+**`group_id is required for organizations in group budget mode`.** Your organization tracks spend
+per group, and you are not in one yet. Ask an organization admin to add you to a group, then sign
+in again.
+
+**Claude Code or Codex gets a `401`.** The key was revoked or has expired. Run `requesty login`;
+it notices the saved key no longer works and creates a new one.
+
+**`Could not load usage`.** The usage panel asks the management API about your own key, which any
+key may do. A `401` means the key was revoked or has expired: run `requesty login` to get a new
+one. Routing itself is unaffected by this panel.
 
 **The harness still uses its old provider.** Restart it. Configuration is read at startup.
 

@@ -2,94 +2,101 @@ package cmd
 
 import (
 	"bytes"
-	"context"
-	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
-	"time"
 
+	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
-	"github.com/requestyai/cli/internal/oauth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestLoginPrintsScopesAndExpiry(t *testing.T) {
-	var gotOptions oauth.Options
+// checkServer answers /v1/auth/check with status, standing in for the gateway
+// when a login has to decide whether the saved key still works.
+func checkServer(t *testing.T, status int) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/v1/auth/check", r.URL.Path)
+		w.WriteHeader(status)
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
+func loginEnvironment(cfg config.Config) environment {
+	return environment{config: cfg, apiv2Client: client.New(cfg)}
+}
+
+func TestLoginDoesNothingWhenKeyStillWorks(t *testing.T) {
+	server := checkServer(t, http.StatusOK)
+	env := loginEnvironment(config.Config{APIKey: "rqsty-old", RouterBaseURL: server.URL})
 	var output bytes.Buffer
-	command := newRootCommand(environment{
-		config: config.Config{APIBaseURL: "http://localhost:40003"},
-		login: func(_ context.Context, opts oauth.Options) (*oauth.Token, error) {
-			gotOptions = opts
-			return &oauth.Token{
-				AccessToken: "secret-token",
-				TokenType:   "Bearer",
-				Scope:       "manage:group:r manage:apikey:w",
-				ExpiresIn:   5 * time.Minute,
-			}, nil
-		},
-	})
+	command := newRootCommand(env)
 	command.SetOut(&output)
 	command.SetArgs([]string{"login"})
 
 	require.NoError(t, command.Execute())
 
-	assert.Equal(t, "http://localhost:40003", gotOptions.APIBaseURL)
-	assert.NotNil(t, gotOptions.Status)
-	assert.Equal(t,
-		"Signed in to Requesty.\n"+
-			"Scopes      manage:group:r manage:apikey:w\n"+
-			"Expires in  5m0s\n",
-		output.String())
-	assert.NotContains(t, output.String(), "secret-token")
+	assert.Contains(t, output.String(), "Already signed in")
+	assert.Contains(t, output.String(), "requesty login --force")
 }
 
-func TestLoginDefaultsToProductionAPI(t *testing.T) {
-	var gotOptions oauth.Options
-	command := newRootCommand(environment{
-		login: func(_ context.Context, opts oauth.Options) (*oauth.Token, error) {
-			gotOptions = opts
-			return &oauth.Token{AccessToken: "t", ExpiresIn: time.Minute}, nil
-		},
-	})
-	command.SetOut(&bytes.Buffer{})
+func TestLoginReportsCheckFailure(t *testing.T) {
+	server := checkServer(t, http.StatusBadGateway)
+	env := loginEnvironment(config.Config{APIKey: "rqsty-old", RouterBaseURL: server.URL})
+	command := newRootCommand(env)
 	command.SetArgs([]string{"login"})
 
-	require.NoError(t, command.Execute())
-	assert.Equal(t, config.DefaultAPIBaseURL, gotOptions.APIBaseURL)
+	err := command.Execute()
+
+	require.ErrorContains(t, err, "failed to check the saved API key")
 }
 
-func TestLoginPrintTokenFlagRevealsToken(t *testing.T) {
+func TestLoginSavesAValidatedAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := checkServer(t, http.StatusOK)
+	env := loginEnvironment(config.Config{RouterBaseURL: server.URL})
 	var output bytes.Buffer
-	command := newRootCommand(environment{
-		login: func(context.Context, oauth.Options) (*oauth.Token, error) {
-			return &oauth.Token{AccessToken: "secret-token", Scope: "manage:group:r", ExpiresIn: time.Minute}, nil
-		},
-	})
+	command := newRootCommand(env)
 	command.SetOut(&output)
-	command.SetArgs([]string{"login", "--print-token"})
+	command.SetArgs([]string{"login", "--api-key", "rqsty-existing"})
 
 	require.NoError(t, command.Execute())
-	assert.Contains(t, output.String(), "Access token  secret-token\n")
+
+	saved, err := config.Load()
+	require.NoError(t, err)
+	assert.Equal(t, config.Config{
+		APIKey:        "rqsty-existing",
+		RouterBaseURL: server.URL,
+	}, saved, "the key is added to the loaded config, which is otherwise saved as it was")
+	assert.Contains(t, output.String(), "Saved your API key")
+	assert.NotContains(t, output.String(), "rqsty-existing")
 }
 
-func TestLoginPrintTokenFlagIsHidden(t *testing.T) {
+func TestLoginRejectsAnUnrecognisedAPIKey(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	server := checkServer(t, http.StatusUnauthorized)
+	env := loginEnvironment(config.Config{RouterBaseURL: server.URL})
+	command := newRootCommand(env)
+	command.SetArgs([]string{"login", "--api-key", "rqsty-typo"})
+
+	require.ErrorIs(t, command.Execute(), errUnrecognisedAPIKey)
+
+	saved, err := config.Load()
+	require.NoError(t, err)
+	assert.Empty(t, saved.APIKey, "a rejected key must not be written")
+}
+
+func TestLoginFlagsAreRegistered(t *testing.T) {
 	command := newRootCommand(environment{})
 
 	login, _, err := command.Find([]string{"login"})
 	require.NoError(t, err)
 
-	flag := login.Flags().Lookup(loginPrintTokenFlag)
-	require.NotNil(t, flag)
-	assert.True(t, flag.Hidden)
-}
-
-func TestLoginReportsFailure(t *testing.T) {
-	command := newRootCommand(environment{
-		login: func(context.Context, oauth.Options) (*oauth.Token, error) {
-			return nil, errors.New("sign-in was not completed: access_denied")
-		},
-	})
-	command.SetArgs([]string{"login"})
-
-	require.EqualError(t, command.Execute(), "sign-in was not completed: access_denied")
+	for _, name := range []string{loginGroupFlag, loginAPIKeyFlag, loginForceFlag} {
+		assert.NotNil(t, login.Flags().Lookup(name), "missing --%s", name)
+	}
 }

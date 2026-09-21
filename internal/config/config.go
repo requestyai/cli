@@ -22,42 +22,50 @@ const (
 type Config struct {
 	APIKey        string `json:"api_key"`
 	RouterBaseURL string `json:"router_base_url"`
-	APIBaseURL    string `json:"api_base_url,omitempty"`
 }
 
-// ResolveAPIBaseURL returns the management API address: the configured one,
-// else the one implied by the router address, else the production default.
-// The fallback matters before onboarding, when the config file does not exist.
-func (c Config) ResolveAPIBaseURL() string {
-	if c.APIBaseURL != "" {
-		return c.APIBaseURL
-	}
-	if c.RouterBaseURL != "" {
-		return strings.Replace(c.RouterBaseURL, "router", "api-v2", 1)
-	}
+func (c Config) APIBaseURL() string {
+	apiBaseURL := strings.Replace(c.RouterBaseURL, "router", "api-v2", 1)
+	apiBaseURL = strings.Replace(apiBaseURL, "40000", "40003", 1)
 
-	return DefaultAPIBaseURL
+	return apiBaseURL
 }
 
-// Load reads the settings. A missing file is not an error: it means the user
-// has not onboarded yet, so the zero Config comes back.
+// DisplayPath is where the settings file lives, for messages: the real
+// location when it can be worked out, else the conventional one.
+func DisplayPath() string {
+	path, err := configPath()
+	if err != nil {
+		return "~/" + dirName + "/" + fileName
+	}
+
+	return path
+}
+
+// Load reads the settings and fills in the production router when the file
+// leaves it blank. A missing file is not an error: it means the user has not
+// onboarded yet, so the defaults come back with no API key.
 func Load() (Config, error) {
 	path, err := configPath()
 	if err != nil {
 		return Config{}, err
 	}
 
+	var config Config
 	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return Config{}, nil
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		// Not onboarded yet: defaults only.
+	case err != nil:
 		return Config{}, fmt.Errorf("failed to read config: %w", err)
+	default:
+		if err := json.Unmarshal(data, &config); err != nil {
+			return Config{}, fmt.Errorf("failed to parse config: %w", err)
+		}
 	}
 
-	var config Config
-	if err := json.Unmarshal(data, &config); err != nil {
-		return Config{}, fmt.Errorf("failed to parse config: %w", err)
+	if config.RouterBaseURL == "" {
+		config.RouterBaseURL = DefaultRouterBaseURL
 	}
 
 	return config, nil
