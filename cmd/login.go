@@ -11,58 +11,68 @@ import (
 )
 
 const (
-	loginGroupFlag  = "group"
-	loginForceFlag  = "force"
-	loginAPIKeyFlag = "api-key"
+	loginGroupFlag     = "group"
+	loginForceFlag     = "force"
+	loginAPIKeyFlag    = "api-key"
+	loginRouterURLFlag = "router-url"
 )
 
 var errUnrecognisedAPIKey = errors.New("that API key was not recognised; copy it again from " + onboarding.APIKeysURL)
 
-func newLoginCommand(env environment) *cobra.Command {
+func newLoginCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "login [--group <name>] [--api-key <key>] [--force]",
-		Short: "Sign in to Requesty and set this machine up",
-		Long: "Sign in to Requesty in your browser and set this machine up.\n\n" +
+		Use:   "login [--group <name>] [--profile <name>] [--api-key <key>] [--router-url <url>] [--force]",
+		Short: "Sign in to Requesty and save a profile on this machine",
+		Long: "Sign in to Requesty in your browser and save a profile on this machine.\n\n" +
 			"Once you approve in the browser, the CLI creates an API key in your Requesty\n" +
-			"account and saves it to " + config.DisplayPath() + ", where `requesty claude`,\n" +
-			"`requesty codex` and the terminal app pick it up. The key is named after this\n" +
-			"machine so you can recognise it on " + onboarding.APIKeysURL + ".\n\n" +
+			"account and saves it as a profile in " + config.DisplayPath() + ", where\n" +
+			"`requesty claude`, `requesty codex` and the terminal app pick it up. The key is\n" +
+			"named after this machine so you can recognise it on " + onboarding.APIKeysURL + ".\n\n" +
 			"The key goes in your group. With several groups you are asked which, or you can\n" +
-			"name one with --group. Without any group the key is a personal one.\n\n" +
+			"name one with --group. Without any group the key is a personal one. The profile\n" +
+			"is called `" + defaultProfileName + "` unless you pass --profile; the first one saved becomes current.\n\n" +
 			"The browser hands the sign-in back to this machine on 127.0.0.1, which does not\n" +
 			"work over SSH. There, pass --api-key with a key from " + onboarding.APIKeysURL + "\n" +
 			"instead; it is checked against the gateway and saved.\n\n" +
-			"When a working key is already saved nothing is created; pass --force to replace\n" +
-			"it with a new one.",
+			"An existing profile is left alone; pass --force to replace its key.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			groupID, _ := cmd.Flags().GetString(loginGroupFlag)
 			apiKey, _ := cmd.Flags().GetString(loginAPIKeyFlag)
+			routerURL, _ := cmd.Flags().GetString(loginRouterURLFlag)
 			force, _ := cmd.Flags().GetBool(loginForceFlag)
 
-			if env.config.APIKey != "" && !force {
-				err := env.apiv2Client.CheckAPIKey(cmd.Context())
-				switch {
-				case err == nil:
-					_, err := fmt.Fprintf(cmd.OutOrStdout(),
-						"Already signed in: an API key is saved in %s.\nRun `requesty login --force` to replace it with a new one.\n",
-						config.DisplayPath())
-					return err
-				case errors.Is(err, client.ErrInvalidAPIKey):
-					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "The saved API key is no longer valid; signing in again.")
-				default:
-					return fmt.Errorf("failed to check the saved API key: %w", err)
+			name := requestedProfile(cmd)
+			if name == "" {
+				name = defaultProfileName
+			}
+			if existing, ok := env.store.Profiles[name]; ok {
+				if !force {
+					return fmt.Errorf("profile %q already exists; pass --force to replace it", name)
+				}
+				if routerURL == "" {
+					routerURL = existing.RouterBaseURL
 				}
 			}
+			if routerURL == "" {
+				routerURL = config.DefaultRouterBaseURL
+			}
+			cfg := config.Config{APIKey: apiKey, RouterBaseURL: routerURL}
 
-			if apiKey != "" {
-				return env.saveAPIKey(cmd, apiKey)
+			if apiKey == "" {
+				var err error
+				cfg, err = onboarding.RunHeadless(cmd.Context(), onboarding.Options{Config: cfg, GroupID: groupID})
+				if err != nil {
+					return err
+				}
+			} else if err := checkAPIKey(cmd, cfg); err != nil {
+				return err
 			}
 
-			_, err := onboarding.RunHeadless(cmd.Context(), onboarding.Options{
-				Config:  env.config,
-				GroupID: groupID,
-			})
+			if err := env.save(name, cfg); err != nil {
+				return err
+			}
+			_, err := fmt.Fprintf(cmd.OutOrStdout(), "Saved profile %q to %s.\n", name, config.DisplayPath())
 
 			return err
 		},
@@ -70,18 +80,16 @@ func newLoginCommand(env environment) *cobra.Command {
 
 	cmd.Flags().String(loginGroupFlag, "", "group to create the API key in, by name or id")
 	cmd.Flags().String(loginAPIKeyFlag, "", "save an existing API key instead of signing in")
-	cmd.Flags().Bool(loginForceFlag, false, "create a new API key even when one is already saved")
+	cmd.Flags().String(loginRouterURLFlag, "", "router for the profile (default: the one it has, else "+config.DefaultRouterBaseURL+")")
+	cmd.Flags().Bool(loginForceFlag, false, "replace the profile's key when it already exists")
 
 	return cmd
 }
 
-// saveAPIKey stores a key the user already has, once the gateway confirms it
-// is live. This is the route for machines where the browser cannot hand the
-// sign-in back, such as over SSH.
-func (env environment) saveAPIKey(cmd *cobra.Command, apiKey string) error {
-	cfg := env.config
-	cfg.APIKey = apiKey
-
+// checkAPIKey asks the gateway whether a key the user supplied is live before
+// it is saved. This is the route for machines where the browser cannot hand
+// the sign-in back, such as over SSH.
+func checkAPIKey(cmd *cobra.Command, cfg config.Config) error {
 	err := client.New(cfg).CheckAPIKey(cmd.Context())
 	if errors.Is(err, client.ErrInvalidAPIKey) {
 		return errUnrecognisedAPIKey
@@ -90,11 +98,5 @@ func (env environment) saveAPIKey(cmd *cobra.Command, apiKey string) error {
 		return fmt.Errorf("failed to check the api key: %w", err)
 	}
 
-	if err := config.Save(cfg); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
-	}
-
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "Saved your API key to %s.\n", config.DisplayPath())
-
-	return err
+	return nil
 }

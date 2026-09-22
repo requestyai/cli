@@ -140,7 +140,7 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 				},
 				"auth": map[string]any{
 					"command": "requesty",
-					"args":    []string{"auth", "token"},
+					"args":    c.authArgs(),
 				},
 			},
 		},
@@ -169,7 +169,7 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 				},
 				Auth: codexProviderAuth{
 					Command: "requesty",
-					Args:    []string{"auth", "token"},
+					Args:    c.authArgs(),
 				},
 			},
 		},
@@ -188,6 +188,10 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 
 func (c *CodexHarness) configPath() string {
 	return filepath.Join(c.configDir, "config.toml")
+}
+
+func (c *CodexHarness) authArgs() []string {
+	return []string{"auth", "token", "--profile", c.config.Name}
 }
 
 // codexEfforts maps Launch effort levels onto Codex's model_reasoning_effort.
@@ -225,7 +229,7 @@ func (c *CodexHarness) Launch(opts LaunchOptions) error {
 		"-c", provider + ".base_url=" + tomlString(c.config.RouterBaseURL+"/v1"),
 		"-c", provider + ".http_headers.X-Title=" + tomlString("OpenAI Codex"),
 		"-c", provider + ".auth.command=" + tomlString(requestyExecutable()),
-		"-c", provider + ".auth.args=[" + tomlString("auth") + "," + tomlString("token") + "]",
+		"-c", provider + ".auth.args=[" + tomlString("auth") + "," + tomlString("token") + "," + tomlString("--profile") + "," + tomlString(c.config.Name) + "]",
 		"-c", "model_supports_reasoning_summaries=false",
 	}
 	if opts.Model != "" {

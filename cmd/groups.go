@@ -17,7 +17,7 @@ const (
 	groupYesFlag          = "yes"
 )
 
-func newGroupsCommand(env environment) *cobra.Command {
+func newGroupsCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "groups",
 		Aliases: []string{"group"},
@@ -25,6 +25,7 @@ func newGroupsCommand(env environment) *cobra.Command {
 		Long: "Manage the groups in your organization.\n\n" +
 			"A group gathers users under a shared budget. Members are existing users of\n" +
 			"your organization, referred to by their user id.",
+		PersistentPreRunE: env.requireProfile,
 	}
 
 	cmd.PersistentFlags().Bool(jsonFlag, false, "print JSON instead of a table")
@@ -39,13 +40,13 @@ func newGroupsCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newGroupsListCommand(env environment) *cobra.Command {
+func newGroupsListCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List the groups in your organization",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			groups, err := env.apiv2Client.Groups(cmd.Context())
+			groups, err := env.session.client.Groups(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -77,7 +78,7 @@ func newGroupsListCommand(env environment) *cobra.Command {
 	}
 }
 
-func newGroupsShowCommand(env environment) *cobra.Command {
+func newGroupsShowCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <id>",
 		Short: "Show one group and its members",
@@ -88,7 +89,7 @@ func newGroupsShowCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			group, err := env.apiv2Client.Group(cmd.Context(), id)
+			group, err := env.session.client.Group(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
@@ -158,7 +159,7 @@ func groupBudgetFields(group client.GroupDetails) [][2]string {
 
 	return fields
 }
-func newGroupsCreateCommand(env environment) *cobra.Command {
+func newGroupsCreateCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a group",
@@ -189,7 +190,7 @@ func newGroupsCreateCommand(env environment) *cobra.Command {
 				input.MonthlyLimit = &limit
 			}
 
-			created, err := env.apiv2Client.CreateGroup(cmd.Context(), input)
+			created, err := env.session.client.CreateGroup(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -214,7 +215,7 @@ func newGroupsCreateCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newGroupsDeleteCommand(env environment) *cobra.Command {
+func newGroupsDeleteCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete a group",
@@ -248,7 +249,7 @@ func newGroupsDeleteCommand(env environment) *cobra.Command {
 				}
 			}
 
-			if err := env.apiv2Client.DeleteGroup(cmd.Context(), id); err != nil {
+			if err := env.session.client.DeleteGroup(cmd.Context(), id); err != nil {
 				return err
 			}
 
@@ -267,7 +268,7 @@ func newGroupsDeleteCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newGroupsMembersCommand(env environment) *cobra.Command {
+func newGroupsMembersCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "members",
 		Aliases: []string{"member"},
@@ -285,7 +286,7 @@ func newGroupsMembersCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newGroupsMembersAddCommand(env environment) *cobra.Command {
+func newGroupsMembersAddCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "add <group-id> <user-id>",
 		Short: "Add a member to a group",
@@ -305,7 +306,7 @@ func newGroupsMembersAddCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.AddGroupMember(cmd.Context(), groupID, userID, role); err != nil {
+			if err := env.session.client.AddGroupMember(cmd.Context(), groupID, userID, role); err != nil {
 				return err
 			}
 
@@ -329,7 +330,7 @@ func newGroupsMembersAddCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newGroupsMembersUpdateCommand(env environment) *cobra.Command {
+func newGroupsMembersUpdateCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <group-id> <user-id> --role <admin|member>",
 		Short: "Update the role of a group member",
@@ -349,7 +350,7 @@ func newGroupsMembersUpdateCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.UpdateGroupMemberRole(cmd.Context(), groupID, userID, role); err != nil {
+			if err := env.session.client.UpdateGroupMemberRole(cmd.Context(), groupID, userID, role); err != nil {
 				return err
 			}
 
@@ -366,7 +367,7 @@ func newGroupsMembersUpdateCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newGroupsMembersRemoveCommand(env environment) *cobra.Command {
+func newGroupsMembersRemoveCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:     "remove <group-id> <user-id>",
 		Aliases: []string{"rm"},
@@ -380,7 +381,7 @@ func newGroupsMembersRemoveCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.RemoveGroupMember(cmd.Context(), groupID, userID); err != nil {
+			if err := env.session.client.RemoveGroupMember(cmd.Context(), groupID, userID); err != nil {
 				return err
 			}
 

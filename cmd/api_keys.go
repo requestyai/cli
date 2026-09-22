@@ -24,7 +24,7 @@ const (
 	apiKeyYesFlag                   = "yes"
 )
 
-func newAPIKeysCommand(env environment) *cobra.Command {
+func newAPIKeysCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "api-keys",
 		Aliases: []string{"api-key", "keys"},
@@ -32,6 +32,7 @@ func newAPIKeysCommand(env environment) *cobra.Command {
 		Long: "Manage the API keys in your organization.\n\n" +
 			"The show command also takes " + client.SelfAPIKeyID +
 			" as the id, meaning the key this CLI is configured with.",
+		PersistentPreRunE: env.requireProfile,
 	}
 
 	cmd.PersistentFlags().Bool(jsonFlag, false, "print JSON instead of a table")
@@ -47,13 +48,13 @@ func newAPIKeysCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newAPIKeysListCommand(env environment) *cobra.Command {
+func newAPIKeysListCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List the API keys in your organization",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			keys, err := env.apiv2Client.APIKeys(cmd.Context())
+			keys, err := env.session.client.APIKeys(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -84,7 +85,7 @@ func newAPIKeysListCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAPIKeysShowCommand(env environment) *cobra.Command {
+func newAPIKeysShowCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <id>",
 		Short: "Show one API key",
@@ -98,7 +99,7 @@ func newAPIKeysShowCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			key, err := env.apiv2Client.APIKey(cmd.Context(), id)
+			key, err := env.session.client.APIKey(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
@@ -122,7 +123,7 @@ func newAPIKeysShowCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAPIKeysCreateCommand(env environment) *cobra.Command {
+func newAPIKeysCreateCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an API key",
@@ -165,7 +166,7 @@ func newAPIKeysCreateCommand(env environment) *cobra.Command {
 			}
 			input.Permissions = permissions
 
-			created, err := env.apiv2Client.CreateAPIKey(cmd.Context(), input)
+			created, err := env.session.client.CreateAPIKey(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -199,7 +200,7 @@ func newAPIKeysCreateCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newAPIKeysSetCommand(env environment) *cobra.Command {
+func newAPIKeysSetCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set",
 		Short: "Set a property on an API key",
@@ -213,7 +214,7 @@ func newAPIKeysSetCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newAPIKeysSetLimitCommand(env environment) *cobra.Command {
+func newAPIKeysSetLimitCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "limit <id> <amount>",
 		Short: "Set the monthly spending cap of an API key",
@@ -231,7 +232,7 @@ func newAPIKeysSetLimitCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.UpdateAPIKeyLimit(cmd.Context(), id, limit); err != nil {
+			if err := env.session.client.UpdateAPIKeyLimit(cmd.Context(), id, limit); err != nil {
 				return err
 			}
 
@@ -241,7 +242,7 @@ func newAPIKeysSetLimitCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAPIKeysSetLabelsCommand(env environment) *cobra.Command {
+func newAPIKeysSetLabelsCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "labels <id> <key=value>...",
 		Short: "Set the labels on an API key",
@@ -271,7 +272,7 @@ func newAPIKeysSetLabelsCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.UpdateAPIKeyLabels(cmd.Context(), id, labels); err != nil {
+			if err := env.session.client.UpdateAPIKeyLabels(cmd.Context(), id, labels); err != nil {
 				return err
 			}
 
@@ -281,7 +282,7 @@ func newAPIKeysSetLabelsCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAPIKeysClearCommand(env environment) *cobra.Command {
+func newAPIKeysClearCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clear",
 		Short: "Clear a property on an API key",
@@ -291,7 +292,7 @@ func newAPIKeysClearCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newAPIKeysClearLabelsCommand(env environment) *cobra.Command {
+func newAPIKeysClearLabelsCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "labels <id>",
 		Short: "Remove every label from an API key",
@@ -302,7 +303,7 @@ func newAPIKeysClearLabelsCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.UpdateAPIKeyLabels(cmd.Context(), id, nil); err != nil {
+			if err := env.session.client.UpdateAPIKeyLabels(cmd.Context(), id, nil); err != nil {
 				return err
 			}
 
@@ -311,7 +312,7 @@ func newAPIKeysClearLabelsCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAPIKeysSetExpiryCommand(env environment) *cobra.Command {
+func newAPIKeysSetExpiryCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "expiry <id> <time|" + util.NeverExpires + ">",
 		Short: "Set when an API key stops working",
@@ -334,7 +335,7 @@ func newAPIKeysSetExpiryCommand(env environment) *cobra.Command {
 				expiresAt = &parsed
 			}
 
-			if err := env.apiv2Client.UpdateAPIKeyExpiry(cmd.Context(), id, expiresAt); err != nil {
+			if err := env.session.client.UpdateAPIKeyExpiry(cmd.Context(), id, expiresAt); err != nil {
 				return err
 			}
 
@@ -348,7 +349,7 @@ func newAPIKeysSetExpiryCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAPIKeysDeleteCommand(env environment) *cobra.Command {
+func newAPIKeysDeleteCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete an API key",
@@ -381,7 +382,7 @@ func newAPIKeysDeleteCommand(env environment) *cobra.Command {
 				}
 			}
 
-			if err := env.apiv2Client.DeleteAPIKey(cmd.Context(), id); err != nil {
+			if err := env.session.client.DeleteAPIKey(cmd.Context(), id); err != nil {
 				return err
 			}
 

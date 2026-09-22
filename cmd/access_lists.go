@@ -17,7 +17,7 @@ const (
 	accessListYesFlag         = "yes"
 )
 
-func newAccessListsCommand(env environment) *cobra.Command {
+func newAccessListsCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "access-lists",
 		Aliases: []string{"access-list"},
@@ -27,6 +27,7 @@ func newAccessListsCommand(env environment) *cobra.Command {
 			"the list are allowed, whatever their kind, so a list with only chat models\n" +
 			"blocks embeddings, images and audio too. Models are grouped by modality:\n" +
 			"chat, embedding, image, transcription or speech.",
+		PersistentPreRunE: env.requireProfile,
 	}
 
 	cmd.PersistentFlags().Bool(jsonFlag, false, "print JSON instead of a table")
@@ -42,13 +43,13 @@ func newAccessListsCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newAccessListsListCommand(env environment) *cobra.Command {
+func newAccessListsListCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List the access lists in your organization",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			lists, err := env.apiv2Client.AccessLists(cmd.Context())
+			lists, err := env.session.client.AccessLists(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -85,7 +86,7 @@ func newAccessListsListCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAccessListsShowCommand(env environment) *cobra.Command {
+func newAccessListsShowCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <id>",
 		Short: "Show one access list and the models it allows",
@@ -96,7 +97,7 @@ func newAccessListsShowCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			list, err := env.apiv2Client.AccessList(cmd.Context(), id)
+			list, err := env.session.client.AccessList(cmd.Context(), id)
 			if err != nil {
 				return err
 			}
@@ -136,7 +137,7 @@ func newAccessListsShowCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAccessListsCreateCommand(env environment) *cobra.Command {
+func newAccessListsCreateCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create an access list",
@@ -180,7 +181,7 @@ func newAccessListsCreateCommand(env environment) *cobra.Command {
 			input.Transcription = models[client.ModalityTranscription]
 			input.Speech = models[client.ModalitySpeech]
 
-			created, err := env.apiv2Client.CreateAccessList(cmd.Context(), input)
+			created, err := env.session.client.CreateAccessList(cmd.Context(), input)
 			if err != nil {
 				return err
 			}
@@ -226,7 +227,7 @@ func exampleModel(modality client.Modality) string {
 	}
 }
 
-func newAccessListsSetCommand(env environment) *cobra.Command {
+func newAccessListsSetCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "set",
 		Short: "Set a property on an access list",
@@ -240,7 +241,7 @@ func newAccessListsSetCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newAccessListsSetNameCommand(env environment) *cobra.Command {
+func newAccessListsSetNameCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "name <id> <name>",
 		Short: "Rename an access list",
@@ -256,7 +257,7 @@ func newAccessListsSetNameCommand(env environment) *cobra.Command {
 				return errors.New("missing name")
 			}
 
-			if err := env.apiv2Client.UpdateAccessListName(cmd.Context(), id, name); err != nil {
+			if err := env.session.client.UpdateAccessListName(cmd.Context(), id, name); err != nil {
 				return err
 			}
 
@@ -265,7 +266,7 @@ func newAccessListsSetNameCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAccessListsSetAutoApproveCommand(env environment) *cobra.Command {
+func newAccessListsSetAutoApproveCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "auto-approve <id>",
 		Short: "Approve new models matching an access list automatically",
@@ -278,7 +279,7 @@ func newAccessListsSetAutoApproveCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.UpdateAccessListAutoApprove(cmd.Context(), id, true); err != nil {
+			if err := env.session.client.UpdateAccessListAutoApprove(cmd.Context(), id, true); err != nil {
 				return err
 			}
 
@@ -288,7 +289,7 @@ func newAccessListsSetAutoApproveCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAccessListsSetModelsCommand(env environment) *cobra.Command {
+func newAccessListsSetModelsCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "models <id> <modality> <model>...",
 		Short: "Set the models of one modality on an access list",
@@ -326,7 +327,7 @@ func newAccessListsSetModelsCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			err = env.apiv2Client.UpdateAccessListModels(cmd.Context(), id, map[client.Modality][]string{modality: models})
+			err = env.session.client.UpdateAccessListModels(cmd.Context(), id, map[client.Modality][]string{modality: models})
 			if err != nil {
 				return err
 			}
@@ -338,7 +339,7 @@ func newAccessListsSetModelsCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAccessListsClearCommand(env environment) *cobra.Command {
+func newAccessListsClearCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "clear",
 		Short: "Clear a property on an access list",
@@ -351,7 +352,7 @@ func newAccessListsClearCommand(env environment) *cobra.Command {
 	return cmd
 }
 
-func newAccessListsClearAutoApproveCommand(env environment) *cobra.Command {
+func newAccessListsClearAutoApproveCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "auto-approve <id>",
 		Short: "Stop approving new models on an access list automatically",
@@ -362,7 +363,7 @@ func newAccessListsClearAutoApproveCommand(env environment) *cobra.Command {
 				return err
 			}
 
-			if err := env.apiv2Client.UpdateAccessListAutoApprove(cmd.Context(), id, false); err != nil {
+			if err := env.session.client.UpdateAccessListAutoApprove(cmd.Context(), id, false); err != nil {
 				return err
 			}
 
@@ -372,7 +373,7 @@ func newAccessListsClearAutoApproveCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAccessListsClearModelsCommand(env environment) *cobra.Command {
+func newAccessListsClearModelsCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "models <id> <modality>...",
 		Short: "Remove every model of one or more modalities from an access list",
@@ -409,7 +410,7 @@ func newAccessListsClearModelsCommand(env environment) *cobra.Command {
 				names = append(names, string(modality))
 			}
 
-			if err := env.apiv2Client.UpdateAccessListModels(cmd.Context(), id, cleared); err != nil {
+			if err := env.session.client.UpdateAccessListModels(cmd.Context(), id, cleared); err != nil {
 				return err
 			}
 
@@ -419,7 +420,7 @@ func newAccessListsClearModelsCommand(env environment) *cobra.Command {
 	}
 }
 
-func newAccessListsDeleteCommand(env environment) *cobra.Command {
+func newAccessListsDeleteCommand(env *environment) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "delete <id>",
 		Short: "Delete an access list",
@@ -453,7 +454,7 @@ func newAccessListsDeleteCommand(env environment) *cobra.Command {
 				}
 			}
 
-			if err := env.apiv2Client.DeleteAccessList(cmd.Context(), id); err != nil {
+			if err := env.session.client.DeleteAccessList(cmd.Context(), id); err != nil {
 				return err
 			}
 
