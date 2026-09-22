@@ -13,7 +13,8 @@ import (
 )
 
 func TestCodexIntegrationRoundTrip(t *testing.T) {
-	config := config.Config{
+	cfg := config.Config{
+		Name:          "work",
 		RouterBaseURL: "https://router.requesty.ai",
 		APIKey:        "my-api-key",
 	}
@@ -23,7 +24,7 @@ func TestCodexIntegrationRoundTrip(t *testing.T) {
 	configPath := filepath.Join(configDir, "config.toml")
 	require.NoError(t, os.WriteFile(configPath, []byte("model = \"gpt-5.5\"\n"), 0o600))
 
-	harness := NewCodexHarness(config, configDir)
+	harness := NewCodexHarness(cfg, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
@@ -43,13 +44,14 @@ func TestCodexIntegrationRoundTrip(t *testing.T) {
 }
 
 func TestCodexHarnessConfigureCreatesMissingConfig(t *testing.T) {
-	config := config.Config{
+	cfg := config.Config{
+		Name:          "work",
 		RouterBaseURL: "https://router.requesty.ai",
 		APIKey:        "my-api-key",
 	}
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "config.toml")
-	harness := NewCodexHarness(config, configDir)
+	harness := NewCodexHarness(cfg, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "openai-responses/gpt-5.5",
@@ -64,7 +66,7 @@ func TestCodexHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	assert.Equal(t, "https://router.requesty.ai/v1", parsedConfig.ModelProviders[codexModelProvider].BaseURL)
 	assert.Equal(t, codexProviderAuth{
 		Command: "requesty",
-		Args:    []string{"auth", "token"},
+		Args:    []string{"auth", "token", "--profile", "work"},
 	}, parsedConfig.ModelProviders[codexModelProvider].Auth)
 	_, err = os.Stat(filepath.Join(configDir, "auth.json"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
@@ -72,6 +74,7 @@ func TestCodexHarnessConfigureCreatesMissingConfig(t *testing.T) {
 
 func TestCodexHarnessConfigureOverwriteUsesProviderAuth(t *testing.T) {
 	cfg := config.Config{
+		Name:          "work",
 		RouterBaseURL: "https://router.requesty.ai",
 		APIKey:        "my-api-key",
 	}
@@ -89,7 +92,7 @@ func TestCodexHarnessConfigureOverwriteUsesProviderAuth(t *testing.T) {
 	require.NoError(t, toml.Unmarshal(configBytes, &parsedConfig))
 	assert.Equal(t, codexProviderAuth{
 		Command: "requesty",
-		Args:    []string{"auth", "token"},
+		Args:    []string{"auth", "token", "--profile", "work"},
 	}, parsedConfig.ModelProviders[codexModelProvider].Auth)
 	_, err = os.Stat(filepath.Join(configDir, "auth.json"))
 	assert.ErrorIs(t, err, os.ErrNotExist)
@@ -122,7 +125,7 @@ func codexOverrides(t *testing.T, args []string) map[string]any {
 func TestCodexHarnessLaunchInjectsRequestyOverrides(t *testing.T) {
 	binaryPath := fakeBinary(t, "codex")
 	captured := captureExec(t)
-	cfg := config.Config{RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
+	cfg := config.Config{Name: "work", RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
 	harness := NewCodexHarness(cfg, t.TempDir())
 
 	err := harness.Launch(LaunchOptions{
@@ -142,7 +145,7 @@ func TestCodexHarnessLaunchInjectsRequestyOverrides(t *testing.T) {
 	assert.Equal(t, "Requesty", overrides["model_providers.requesty.name"])
 	assert.Equal(t, "https://router.requesty.ai/v1", overrides["model_providers.requesty.base_url"])
 	assert.Equal(t, "OpenAI Codex", overrides["model_providers.requesty.http_headers.X-Title"])
-	assert.Equal(t, []any{"auth", "token"}, overrides["model_providers.requesty.auth.args"])
+	assert.Equal(t, []any{"auth", "token", "--profile", "work"}, overrides["model_providers.requesty.auth.args"])
 	assert.Equal(t, false, overrides["model_supports_reasoning_summaries"])
 	assert.Equal(t, "xhigh", overrides["model_reasoning_effort"])
 
@@ -160,7 +163,7 @@ func TestCodexHarnessLaunchInjectsRequestyOverrides(t *testing.T) {
 func TestCodexHarnessLaunchWithoutOverridesOmitsModelAndEffort(t *testing.T) {
 	fakeBinary(t, "codex")
 	captured := captureExec(t)
-	cfg := config.Config{RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
+	cfg := config.Config{Name: "work", RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
 	harness := NewCodexHarness(cfg, t.TempDir())
 
 	require.NoError(t, harness.Launch(LaunchOptions{Env: []string{}}))
@@ -173,7 +176,7 @@ func TestCodexHarnessLaunchWithoutOverridesOmitsModelAndEffort(t *testing.T) {
 func TestCodexHarnessLaunchRejectsUnsupportedEffort(t *testing.T) {
 	fakeBinary(t, "codex")
 	captured := captureExec(t)
-	cfg := config.Config{RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
+	cfg := config.Config{Name: "work", RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
 	harness := NewCodexHarness(cfg, t.TempDir())
 
 	err := harness.Launch(LaunchOptions{Effort: EffortMax, Env: []string{}})
@@ -185,7 +188,7 @@ func TestCodexHarnessLaunchRejectsUnsupportedEffort(t *testing.T) {
 func TestCodexHarnessLaunchRequiresBinary(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	captured := captureExec(t)
-	cfg := config.Config{RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
+	cfg := config.Config{Name: "work", RouterBaseURL: "https://router.requesty.ai", APIKey: "my-api-key"}
 	harness := NewCodexHarness(cfg, t.TempDir())
 
 	err := harness.Launch(LaunchOptions{Env: []string{}})

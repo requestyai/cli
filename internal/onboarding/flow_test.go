@@ -41,8 +41,8 @@ func (s *manageServer) handler() http.Handler {
 
 // signedIn is a session as signIn would leave it, minus the browser: an
 // OAuth token in the client and the caller's groups listed. The router points
-// at the fake, which the management API address follows. Config is written
-// under a throwaway HOME.
+// at the fake, which the management API address follows. HOME is a throwaway
+// so a test can check that nothing is written there.
 func signedIn(t *testing.T, groups ...client.Group) (*session, *manageServer) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
@@ -122,7 +122,7 @@ func TestCreateKeyPersonal(t *testing.T) {
 
 	saved, err := config.Load()
 	require.NoError(t, err)
-	assert.Equal(t, r.Config, saved)
+	assert.Empty(t, saved.Profiles, "the command layer owns persistence")
 }
 
 func TestCreateKeyInGroup(t *testing.T) {
@@ -144,9 +144,6 @@ func TestCreateKeyReportsGatewayFailure(t *testing.T) {
 	_, err := s.createKey(context.Background(), nil)
 
 	require.ErrorContains(t, err, "group_id is required")
-	saved, loadErr := config.Load()
-	require.NoError(t, loadErr)
-	assert.Empty(t, saved.APIKey, "nothing is written when the gateway refuses")
 }
 
 func TestFindGroup(t *testing.T) {

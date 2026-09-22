@@ -111,9 +111,6 @@ func (s *session) createKey(ctx context.Context, group *client.Group) (result, e
 
 	cfg := s.opts.Config
 	cfg.APIKey = created.Secret
-	if err := config.Save(cfg); err != nil {
-		return result{}, fmt.Errorf("failed to save config: %w", err)
-	}
 
 	return result{Config: cfg, KeyName: name, Group: group}, nil
 }

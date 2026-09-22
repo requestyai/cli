@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -18,8 +19,13 @@ const (
 	DefaultAPIBaseURL    = "https://api-v2.requesty.ai"
 )
 
-// Config is the settings file.
+// ErrNoProfiles means nobody has signed in on this machine yet.
+var ErrNoProfiles = errors.New("no Requesty profile configured; run `requesty login`")
+
+// Config is what a client or harness runs with: an API key and the router it
+// is sent to. The settings file holds one per profile.
 type Config struct {
+	Name          string `json:"-"`
 	APIKey        string `json:"api_key"`
 	RouterBaseURL string `json:"router_base_url"`
 }
@@ -29,6 +35,79 @@ func (c Config) APIBaseURL() string {
 	apiBaseURL = strings.Replace(apiBaseURL, "40000", "40003", 1)
 
 	return apiBaseURL
+}
+
+// Store is the saved profiles and which one is current.
+type Store struct {
+	Current  string            `json:"current"`
+	Profiles map[string]Config `json:"profiles"`
+}
+
+// Names lists the saved profiles in a stable order.
+func (s Store) Names() []string {
+	names := make([]string, 0, len(s.Profiles))
+	for name := range s.Profiles {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	return names
+}
+
+// Resolve returns the named profile, or the current profile when name is
+// empty.
+func (s Store) Resolve(name string) (Config, error) {
+	if len(s.Profiles) == 0 {
+		return Config{}, ErrNoProfiles
+	}
+	if name == "" {
+		name = s.Current
+	}
+
+	cfg, ok := s.Profiles[name]
+	if !ok {
+		return Config{}, fmt.Errorf("profile %q not found; saved profiles: %s", name, strings.Join(s.Names(), ", "))
+	}
+	cfg.Name = name
+
+	return cfg, nil
+}
+
+// Set stores cfg as the named profile, replacing any existing one.
+func (s *Store) Set(name string, cfg Config) {
+	if s.Profiles == nil {
+		s.Profiles = make(map[string]Config)
+	}
+	cfg.Name = ""
+	s.Profiles[name] = cfg
+	if s.Current == "" {
+		s.Current = name
+	}
+}
+
+// Use makes name the current profile.
+func (s *Store) Use(name string) error {
+	if _, ok := s.Profiles[name]; !ok {
+		return fmt.Errorf("profile %q not found; saved profiles: %s", name, strings.Join(s.Names(), ", "))
+	}
+	s.Current = name
+	return nil
+}
+
+// Remove deletes name and keeps Current valid. If the current profile is
+// removed, the first remaining profile in name order becomes current.
+func (s *Store) Remove(name string) error {
+	if _, ok := s.Profiles[name]; !ok {
+		return fmt.Errorf("profile %q not found; saved profiles: %s", name, strings.Join(s.Names(), ", "))
+	}
+	delete(s.Profiles, name)
+	if s.Current == name {
+		s.Current = ""
+		if names := s.Names(); len(names) > 0 {
+			s.Current = names[0]
+		}
+	}
+	return nil
 }
 
 // DisplayPath is where the settings file lives, for messages: the real
@@ -42,37 +121,40 @@ func DisplayPath() string {
 	return path
 }
 
-// Load reads the settings and fills in the production router when the file
-// leaves it blank. A missing file is not an error: it means the user has not
-// onboarded yet, so the defaults come back with no API key.
-func Load() (Config, error) {
+// Load reads the settings and fills in the production router for profiles
+// that leave it blank. A missing file is not an error: it means the user has
+// not onboarded yet, so an empty Store comes back.
+func Load() (Store, error) {
 	path, err := configPath()
 	if err != nil {
-		return Config{}, err
+		return Store{}, err
 	}
 
-	var config Config
+	var store Store
 	data, err := os.ReadFile(path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		// Not onboarded yet: defaults only.
+		// Not onboarded yet.
 	case err != nil:
-		return Config{}, fmt.Errorf("failed to read config: %w", err)
+		return Store{}, fmt.Errorf("failed to read config: %w", err)
 	default:
-		if err := json.Unmarshal(data, &config); err != nil {
-			return Config{}, fmt.Errorf("failed to parse config: %w", err)
+		if err := json.Unmarshal(data, &store); err != nil {
+			return Store{}, fmt.Errorf("failed to parse config: %w", err)
 		}
 	}
 
-	if config.RouterBaseURL == "" {
-		config.RouterBaseURL = DefaultRouterBaseURL
+	for name, cfg := range store.Profiles {
+		if cfg.RouterBaseURL == "" {
+			cfg.RouterBaseURL = DefaultRouterBaseURL
+			store.Profiles[name] = cfg
+		}
 	}
 
-	return config, nil
+	return store, nil
 }
 
 // Save writes the settings, creating ~/.requesty if it is missing.
-func Save(config Config) error {
+func Save(store Store) error {
 	path, err := configPath()
 	if err != nil {
 		return err
@@ -82,7 +164,7 @@ func Save(config Config) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	data, err := json.MarshalIndent(config, "", "  ")
+	data, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to encode config: %w", err)
 	}

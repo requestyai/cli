@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	harnessModelFlag  = "--model"
-	harnessEffortFlag = "--reasoning-effort"
+	harnessProfileFlag = "--" + profileFlag
+	harnessModelFlag   = "--model"
+	harnessEffortFlag  = "--reasoning-effort"
 )
 
 // errHarnessHelp signals that the leading flags asked for help.
@@ -21,7 +22,7 @@ var errHarnessHelp = errors.New("help requested")
 
 // newHarnessCommands returns the `requesty <harness>` commands, each of which
 // starts a harness with Requesty injected for that run.
-func newHarnessCommands(env environment) []*cobra.Command {
+func newHarnessCommands(env *environment) []*cobra.Command {
 	return []*cobra.Command{
 		newHarnessCommand(env, "claude", "Claude Code", func(cfg config.Config) (harnesses.Harness, error) {
 			dir, err := harnesses.DefaultConfigDirClaudeCode()
@@ -41,15 +42,16 @@ func newHarnessCommands(env environment) []*cobra.Command {
 }
 
 // newHarnessCommand builds `requesty <binary>`. The harness is constructed
-// lazily, from the config as it stands after any onboarding, so a machine
+// lazily, from the profile as it stands after any onboarding, so a machine
 // without a resolvable home directory still gets a help page and a clear
 // error, rather than a missing command.
-func newHarnessCommand(env environment, binary, displayName string, newHarness func(config.Config) (harnesses.Harness, error)) *cobra.Command {
+func newHarnessCommand(env *environment, binary, displayName string, newHarness func(config.Config) (harnesses.Harness, error)) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s [--model <id>] [--reasoning-effort <level>] [-- ] [%s args...]", binary, binary),
+		Use:   fmt.Sprintf("%s [--profile <name>] [--model <id>] [--reasoning-effort <level>] [-- ] [%s args...]", binary, binary),
 		Short: fmt.Sprintf("Launch %s through Requesty", displayName),
 		Long: fmt.Sprintf("Launch %s with its traffic routed through Requesty for this run only.\n\n", displayName) +
 			"Flags:\n" +
+			fmt.Sprintf("  %-28s %s\n", harnessProfileFlag+" <name>", "Saved profile to run as (also "+profileEnv+")") +
 			fmt.Sprintf("  %-28s %s\n", harnessModelFlag+" <id>", "Model to use for this run (any Requesty model id)") +
 			fmt.Sprintf("  %-28s %s\n", harnessEffortFlag+" <level>", "Reasoning effort: "+strings.Join(harnesses.Efforts, ", ")) +
 			fmt.Sprintf("  %-28s %s\n\n", "-h, --help", "Show this help") +
@@ -59,7 +61,7 @@ func newHarnessCommand(env environment, binary, displayName string, newHarness f
 		DisableFlagsInUseLine: true,
 		SilenceUsage:          true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts, err := parseHarnessArgs(args)
+			parsed, err := parseHarnessArgs(args)
 			if errors.Is(err, errHarnessHelp) {
 				return cmd.Help()
 			}
@@ -67,7 +69,7 @@ func newHarnessCommand(env environment, binary, displayName string, newHarness f
 				return err
 			}
 
-			cfg, err := env.ensureAPIKey(cmd, displayName)
+			cfg, err := env.ensureProfile(cmd, parsed.profile, displayName)
 			if err != nil {
 				return err
 			}
@@ -77,11 +79,18 @@ func newHarnessCommand(env environment, binary, displayName string, newHarness f
 				return fmt.Errorf("failed to set up %s: %w", displayName, err)
 			}
 
-			return harness.Launch(opts)
+			return harness.Launch(parsed.launch)
 		},
 	}
 
 	return cmd
+}
+
+// harnessArgs is a harness command line split into our profile choice and
+// what the harness is launched with.
+type harnessArgs struct {
+	profile string
+	launch  harnesses.LaunchOptions
 }
 
 // parseHarnessArgs splits our leading flags from the harness's own arguments.
@@ -90,59 +99,61 @@ func newHarnessCommand(env environment, binary, displayName string, newHarness f
 // `requesty claude -p "hi"` both working, and lets a harness flag that happens
 // to share a name with ours (`codex --model`) still reach the harness when it
 // appears later.
-func parseHarnessArgs(args []string) (harnesses.LaunchOptions, error) {
-	var opts harnesses.LaunchOptions
+func parseHarnessArgs(args []string) (harnessArgs, error) {
+	var parsed harnessArgs
 
 	for len(args) > 0 {
 		arg := args[0]
 
 		switch {
 		case arg == "--":
-			opts.Args = args[1:]
-			return opts, nil
+			parsed.launch.Args = args[1:]
+			return parsed, nil
 
 		case arg == "-h" || arg == "--help":
-			return opts, errHarnessHelp
+			return parsed, errHarnessHelp
 
-		case arg == harnessModelFlag || arg == harnessEffortFlag:
+		case arg == harnessProfileFlag || arg == harnessModelFlag || arg == harnessEffortFlag:
 			if len(args) < 2 {
-				return opts, fmt.Errorf("%s requires a value", arg)
+				return parsed, fmt.Errorf("%s requires a value", arg)
 			}
-			if err := setHarnessFlag(&opts, arg, args[1]); err != nil {
-				return opts, err
+			if err := parsed.set(arg, args[1]); err != nil {
+				return parsed, err
 			}
 			args = args[2:]
 
-		case strings.HasPrefix(arg, harnessModelFlag+"=") || strings.HasPrefix(arg, harnessEffortFlag+"="):
+		case strings.HasPrefix(arg, harnessProfileFlag+"=") || strings.HasPrefix(arg, harnessModelFlag+"=") || strings.HasPrefix(arg, harnessEffortFlag+"="):
 			flag, value, _ := strings.Cut(arg, "=")
-			if err := setHarnessFlag(&opts, flag, value); err != nil {
-				return opts, err
+			if err := parsed.set(flag, value); err != nil {
+				return parsed, err
 			}
 			args = args[1:]
 
 		default:
-			opts.Args = args
-			return opts, nil
+			parsed.launch.Args = args
+			return parsed, nil
 		}
 	}
 
-	return opts, nil
+	return parsed, nil
 }
 
-func setHarnessFlag(opts *harnesses.LaunchOptions, flag, value string) error {
+func (p *harnessArgs) set(flag, value string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return fmt.Errorf("%s requires a value", flag)
 	}
 
 	switch flag {
+	case harnessProfileFlag:
+		p.profile = value
 	case harnessModelFlag:
-		opts.Model = value
+		p.launch.Model = value
 	case harnessEffortFlag:
 		if !slices.Contains(harnesses.Efforts, value) {
 			return fmt.Errorf("%s must be one of %s (got %q)", flag, strings.Join(harnesses.Efforts, ", "), value)
 		}
-		opts.Effort = value
+		p.launch.Effort = value
 	}
 
 	return nil
