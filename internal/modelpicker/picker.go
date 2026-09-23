@@ -24,32 +24,65 @@ import (
 // ErrCancelled reports that the dialog was closed without choosing.
 var ErrCancelled = errors.New("no model chosen")
 
-// Options says what to pick for and what to suggest.
+// Options says what to pick for and what to prefer.
 type Options struct {
 	// Client fetches the two lists the picker shows, as the profile the
 	// harness will run with.
 	Client *client.Client
 	// Harness is the display name shown in the title.
 	Harness string
-	// Preselect is the model the cursor starts on when it is listed: the
-	// harness's recommended default, or what was picked last time.
-	Preselect string
+	// Preferred lists models in order of preference: what was picked last
+	// time, or the harness's defaults. The first one the profile can route
+	// to is returned without asking, or with Confirm set, is where the
+	// cursor starts.
+	Preferred []string
+	// Confirm always shows the dialog, for when the user asked to choose.
+	Confirm bool
 }
 
-// Run shows the picker and returns the chosen model id. It draws on stderr so
-// the harness's own stdout is untouched.
-func Run(ctx context.Context, opts Options) (string, error) {
+// Run returns the model to launch with. Unless Confirm is set, the first of
+// Preferred that the profile can route to is returned without asking, and
+// asked reports false. Otherwise the dialog is shown, drawn on stderr so the
+// harness's own stdout is untouched.
+func Run(ctx context.Context, opts Options) (chosen string, asked bool, err error) {
+	if !opts.Confirm {
+		if preferred := routablePreferred(ctx, opts); preferred != "" {
+			return preferred, false, nil
+		}
+	}
+
 	final, err := tea.NewProgram(newModel(ctx, opts), tea.WithContext(ctx), tea.WithOutput(os.Stderr)).Run()
 	if err != nil {
-		return "", fmt.Errorf("failed to run model picker: %w", err)
+		return "", true, fmt.Errorf("failed to run model picker: %w", err)
 	}
 
 	finished, ok := final.(model)
 	if !ok || finished.chosen == "" {
-		return "", ErrCancelled
+		return "", true, ErrCancelled
 	}
 
-	return finished.chosen, nil
+	return finished.chosen, true, nil
+}
+
+// routablePreferred is the first of Preferred that the profile can route to,
+// or empty. Both lists come back filtered by the key's access list, so
+// anything found is known to be permitted. A list that cannot be fetched
+// counts as empty here; the dialog will show the error.
+func routablePreferred(ctx context.Context, opts Options) string {
+	if len(opts.Preferred) == 0 {
+		return ""
+	}
+
+	policies, _ := opts.Client.ManagedPolicies(ctx)
+	models, _ := opts.Client.Models(ctx)
+	listed := slices.Concat(policies, models)
+	for _, id := range opts.Preferred {
+		if slices.ContainsFunc(listed, func(m client.Model) bool { return m.ID == id }) {
+			return id
+		}
+	}
+
+	return ""
 }
 
 const (
@@ -234,14 +267,12 @@ func (m model) filtered() []client.Model {
 	return matches
 }
 
-// preselectedCursor is where the cursor goes on a fresh list: on Preselect
-// when it is there, else the top.
+// preselectedCursor is where the cursor goes on a fresh list: on the first of
+// Preferred that is there, else the top.
 func (m model) preselectedCursor() int {
-	if m.opts.Preselect == "" {
-		return 0
-	}
-	for i, model := range m.filtered() {
-		if model.ID == m.opts.Preselect {
+	filtered := m.filtered()
+	for _, id := range m.opts.Preferred {
+		if i := slices.IndexFunc(filtered, func(m client.Model) bool { return m.ID == id }); i >= 0 {
 			return i
 		}
 	}

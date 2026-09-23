@@ -125,6 +125,7 @@ func TestSaveRoundTrips(t *testing.T) {
 	var store Store
 	work := Config{APIKey: "rqsty-work", RouterBaseURL: "https://router.eu.example"}
 	work.SetHarnessModel("claude", "claude-sonnet-4-6")
+	work.SetHarnessFastModel("claude", "claude-haiku-4-5")
 	store.Set("work", work)
 
 	require.NoError(t, Save(store))
@@ -133,6 +134,19 @@ func TestSaveRoundTrips(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, store, got)
 	assert.Equal(t, "claude-sonnet-4-6", got.Profiles["work"].HarnessModels["claude"])
+	assert.Equal(t, "claude-haiku-4-5", got.Profiles["work"].HarnessFastModels["claude"])
+}
+
+func TestSetHarnessModelForgetsFastModel(t *testing.T) {
+	var cfg Config
+	cfg.SetHarnessModel("claude", "claude-sonnet-4-6")
+	cfg.SetHarnessFastModel("claude", "claude-haiku-4-5")
+	cfg.SetHarnessFastModel("other", "kept")
+
+	cfg.SetHarnessModel("claude", "claude-sonnet-4-6@eu")
+
+	assert.NotContains(t, cfg.HarnessFastModels, "claude")
+	assert.Equal(t, "kept", cfg.HarnessFastModels["other"])
 }
 
 func TestHarnessModelsAreOmittedUntilSet(t *testing.T) {
@@ -140,6 +154,7 @@ func TestHarnessModelsAreOmittedUntilSet(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), "harness_models")
+	assert.NotContains(t, string(data), "harness_fast_models")
 }
 
 func TestResolve(t *testing.T) {

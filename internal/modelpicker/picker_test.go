@@ -84,10 +84,10 @@ func view(m model) string {
 }
 
 // loaded runs the picker's own load commands so both tabs are filled in.
-func loaded(t *testing.T, l lists, preselect string) model {
+func loaded(t *testing.T, l lists, preferred ...string) model {
 	t.Helper()
 
-	m := newModel(context.Background(), Options{Client: newClient(t, l), Harness: "Claude Code", Preselect: preselect})
+	m := newModel(context.Background(), Options{Client: newClient(t, l), Harness: "Claude Code", Preferred: preferred})
 	for _, tab := range []tab{tabPolicies, tabModels} {
 		msg := m.load(tab)()
 		require.IsType(t, loadedMsg{}, msg)
@@ -97,8 +97,52 @@ func loaded(t *testing.T, l lists, preselect string) model {
 	return m
 }
 
-func TestShowsPoliciesFirstSortedWithPreselectUnderCursor(t *testing.T) {
-	m := loaded(t, lists{policies: policies, models: models}, "claude-sonnet-4-6")
+func TestRunReturnsTheFirstRoutablePreferredWithoutAsking(t *testing.T) {
+	opts := Options{Client: newClient(t, lists{policies: policies, models: models}), Harness: "Claude Code"}
+
+	tests := []struct {
+		name      string
+		preferred []string
+		want      string
+	}{
+		{name: "a managed policy", preferred: []string{"claude-sonnet-4-6"}, want: "claude-sonnet-4-6"},
+		{name: "a model", preferred: []string{"openai/gpt-5.5"}, want: "openai/gpt-5.5"},
+		{name: "the first that is listed", preferred: []string{"claude-haiku-4-5", "claude-fable-5", "gpt-5.5"}, want: "claude-fable-5"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts.Preferred = tt.preferred
+
+			got, asked, err := Run(context.Background(), opts)
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+			assert.False(t, asked)
+		})
+	}
+}
+
+func TestRoutablePreferredIsEmptyWhenNothingMatches(t *testing.T) {
+	tests := []struct {
+		name string
+		l    lists
+	}{
+		{name: "not listed", l: lists{policies: policies, models: models}},
+		{name: "lists cannot be fetched", l: lists{}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := Options{Client: newClient(t, tt.l), Preferred: []string{"claude-haiku-4-5"}}
+
+			assert.Empty(t, routablePreferred(context.Background(), opts))
+		})
+	}
+}
+
+func TestShowsPoliciesFirstSortedWithPreferredUnderCursor(t *testing.T) {
+	m := loaded(t, lists{policies: policies, models: models}, "claude-haiku-4-5", "claude-sonnet-4-6")
 
 	assert.Equal(t, tabPolicies, m.tab)
 	assert.Equal(t, 1, m.cursor, "sorted: claude-fable-5, claude-sonnet-4-6, gpt-5.5")
@@ -114,7 +158,7 @@ func TestShowsPoliciesFirstSortedWithPreselectUnderCursor(t *testing.T) {
 }
 
 func TestEnterChoosesTheModelUnderTheCursor(t *testing.T) {
-	m := loaded(t, lists{policies: policies, models: models}, "")
+	m := loaded(t, lists{policies: policies, models: models})
 
 	m, _ = update(m, key("down"))
 	m, cmd := update(m, key("enter"))
@@ -156,14 +200,14 @@ func TestSearchFiltersTheCurrentTabAndResetsCursor(t *testing.T) {
 }
 
 func TestNoPoliciesLandsOnModelsTab(t *testing.T) {
-	m := loaded(t, lists{policies: []client.Model{}, models: models}, "")
+	m := loaded(t, lists{policies: []client.Model{}, models: models})
 
 	assert.Equal(t, tabModels, m.tab)
 	assert.Contains(t, view(m), "❯ anthropic/claude-sonnet-4-6")
 }
 
 func TestLoadErrorMovesToModelsAndIsShownOnItsTab(t *testing.T) {
-	m := loaded(t, lists{models: models}, "")
+	m := loaded(t, lists{models: models})
 
 	assert.Equal(t, tabModels, m.tab)
 
@@ -183,7 +227,7 @@ func TestLoadingStateBeforeListsArrive(t *testing.T) {
 }
 
 func TestEscapeLeavesNothingChosen(t *testing.T) {
-	m := loaded(t, lists{policies: policies, models: models}, "")
+	m := loaded(t, lists{policies: policies, models: models})
 
 	m, cmd := update(m, key("esc"))
 
@@ -192,7 +236,7 @@ func TestEscapeLeavesNothingChosen(t *testing.T) {
 }
 
 func TestCursorStaysWithinTheList(t *testing.T) {
-	m := loaded(t, lists{policies: policies, models: models}, "")
+	m := loaded(t, lists{policies: policies, models: models})
 
 	for range 10 {
 		m, _ = update(m, key("down"))

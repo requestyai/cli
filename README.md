@@ -98,19 +98,27 @@ unless you pass `--profile`.
 for that run only; nothing on disk is changed. The current profile is used unless you select
 another.
 
-The first time you launch a harness from a profile, a picker asks which model it should use and
-remembers the answer in the profile. The Policies tab lists Requesty's managed policies, which name
-a model once (`claude-sonnet-4-6`) and route it across providers; `tab` switches to every model
-the key can route to. The cursor starts on the harness's recommended default, so enter is usually
-all it takes. `--model` overrides the remembered model for one run without changing it;
-`--choose-model` opens the picker again to change it. In a script or CI with no terminal to ask
-in, pass `--model`, or pick once interactively first.
+The first time you launch a harness from a profile, the CLI settles which model it should use and
+remembers the answer in the profile. When the key can route to the harness's recommended default
+(`claude-sonnet-4-6` for Claude Code), that is used and printed, without asking. Otherwise a
+picker asks: the Policies tab lists Requesty's managed policies, which name a model once and
+route it across providers, and `tab` switches to every model the key can route to. `--model`
+overrides the remembered model for one run without changing it; `--choose-model` opens the picker
+to change it. In a script or CI with no terminal to ask in, the default is still used when it can
+be; otherwise pass `--model`, or pick once interactively first.
+
+Claude Code hands background work (session titles, summaries, subagents marked `haiku`) to a
+smaller model, which it would otherwise ask for by an Anthropic model id the gateway does not
+know. The CLI settles this the same way: `claude-haiku-4-5` when the key can route to it, else the
+main model itself, so an access list without Haiku still works. `--choose-fast-model` opens the
+picker to change it and `--fast-model` overrides it for one run.
 
 ```sh
-requesty claude                                    # current profile, remembered model (asks the first time)
+requesty claude                                    # current profile, remembered model (settled the first time)
 requesty claude --profile eu                       # a named profile, with its own remembered model
 requesty claude --model anthropic/claude-opus-4-1  # this model, just for this run
 requesty claude --choose-model                     # pick again and remember the new answer
+requesty claude --choose-fast-model                # pick what background work runs on
 requesty codex --reasoning-effort high -- --full-auto
 ```
 
