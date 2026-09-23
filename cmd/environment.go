@@ -6,6 +6,7 @@ import (
 
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
+	"github.com/requestyai/cli/internal/modelpicker"
 	"github.com/requestyai/cli/internal/onboarding"
 	"github.com/spf13/cobra"
 )
@@ -88,6 +89,55 @@ func (env *environment) ensureProfile(cmd *cobra.Command, name, harness string) 
 	cfg.Name = defaultProfileName
 
 	return cfg, nil
+}
+
+// ensureModel returns the model the harness launches with, running the
+// picker when the profile has none for it yet and saving the answer.
+func (env *environment) ensureModel(cmd *cobra.Command, cfg config.Config, spec harnessSpec, parsed harnessArgs) (string, error) {
+	model, ask := modelToLaunch(cfg, spec, parsed)
+	if !ask {
+		return model, nil
+	}
+
+	picked, err := modelpicker.Run(cmd.Context(), modelpicker.Options{
+		Client:    client.New(cfg),
+		Harness:   spec.displayName,
+		Preselect: model,
+	})
+	if errors.Is(err, modelpicker.ErrCancelled) {
+		return "", err
+	}
+	if err != nil {
+		// Most often there is no terminal to ask in, such as a script or CI.
+		return "", fmt.Errorf("no model picked for %s in profile %q; pass %s <id> or run in a terminal once (%w)", spec.displayName, cfg.Name, harnessModelFlag, err)
+	}
+
+	cfg.SetHarnessModel(spec.binary, picked)
+	if err := env.save(cfg.Name, cfg); err != nil {
+		return "", err
+	}
+
+	return picked, nil
+}
+
+// modelToLaunch applies the rules for which model a harness launches with:
+// --model for this run only, else the model picked for this harness in the
+// profile, else ask. When asking, model is what the picker should suggest:
+// the saved model that --choose-model is replacing, or the harness default.
+func modelToLaunch(cfg config.Config, spec harnessSpec, parsed harnessArgs) (model string, ask bool) {
+	if parsed.launch.Model != "" {
+		return parsed.launch.Model, false
+	}
+
+	saved := cfg.HarnessModels[spec.binary]
+	if saved != "" && !parsed.chooseModel {
+		return saved, false
+	}
+	if saved != "" {
+		return saved, true
+	}
+
+	return spec.defaultModel, true
 }
 
 // save stores cfg as the named profile and writes the file. The first profile

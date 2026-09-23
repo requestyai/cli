@@ -12,31 +12,54 @@ import (
 )
 
 const (
-	harnessProfileFlag = "--" + profileFlag
-	harnessModelFlag   = "--model"
-	harnessEffortFlag  = "--reasoning-effort"
+	harnessProfileFlag     = "--" + profileFlag
+	harnessModelFlag       = "--model"
+	harnessChooseModelFlag = "--choose-model"
+	harnessEffortFlag      = "--reasoning-effort"
 )
 
 // errHarnessHelp signals that the leading flags asked for help.
 var errHarnessHelp = errors.New("help requested")
 
+// harnessSpec is one `requesty <binary>` command.
+type harnessSpec struct {
+	// binary is the command name and the executable it launches.
+	binary string
+	// displayName is how the harness is referred to in messages.
+	displayName string
+	// defaultModel is the managed policy the picker suggests when nothing
+	// has been picked yet.
+	defaultModel string
+	newHarness   func(config.Config) (harnesses.Harness, error)
+}
+
 // newHarnessCommands returns the `requesty <harness>` commands, each of which
 // starts a harness with Requesty injected for that run.
 func newHarnessCommands(env *environment) []*cobra.Command {
 	return []*cobra.Command{
-		newHarnessCommand(env, "claude", "Claude Code", func(cfg config.Config) (harnesses.Harness, error) {
-			dir, err := harnesses.DefaultConfigDirClaudeCode()
-			if err != nil {
-				return nil, err
-			}
-			return harnesses.NewClaudeHarness(cfg, dir), nil
+		newHarnessCommand(env, harnessSpec{
+			binary:       "claude",
+			displayName:  "Claude Code",
+			defaultModel: "claude-sonnet-4-6",
+			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
+				dir, err := harnesses.DefaultConfigDirClaudeCode()
+				if err != nil {
+					return nil, err
+				}
+				return harnesses.NewClaudeHarness(cfg, dir), nil
+			},
 		}),
-		newHarnessCommand(env, "codex", "Codex", func(cfg config.Config) (harnesses.Harness, error) {
-			dir, err := harnesses.DefaultConfigDirCodex()
-			if err != nil {
-				return nil, err
-			}
-			return harnesses.NewCodexHarness(cfg, dir), nil
+		newHarnessCommand(env, harnessSpec{
+			binary:       "codex",
+			displayName:  "Codex",
+			defaultModel: "gpt-5.5",
+			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
+				dir, err := harnesses.DefaultConfigDirCodex()
+				if err != nil {
+					return nil, err
+				}
+				return harnesses.NewCodexHarness(cfg, dir), nil
+			},
 		}),
 	}
 }
@@ -45,17 +68,20 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 // lazily, from the profile as it stands after any onboarding, so a machine
 // without a resolvable home directory still gets a help page and a clear
 // error, rather than a missing command.
-func newHarnessCommand(env *environment, binary, displayName string, newHarness func(config.Config) (harnesses.Harness, error)) *cobra.Command {
+func newHarnessCommand(env *environment, spec harnessSpec) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s [--profile <name>] [--model <id>] [--reasoning-effort <level>] [-- ] [%s args...]", binary, binary),
-		Short: fmt.Sprintf("Launch %s through Requesty", displayName),
-		Long: fmt.Sprintf("Launch %s with its traffic routed through Requesty for this run only.\n\n", displayName) +
+		Use:   fmt.Sprintf("%s [--profile <name>] [--model <id> | --choose-model] [--reasoning-effort <level>] [-- ] [%s args...]", spec.binary, spec.binary),
+		Short: fmt.Sprintf("Launch %s through Requesty", spec.displayName),
+		Long: fmt.Sprintf("Launch %s with its traffic routed through Requesty for this run only.\n\n", spec.displayName) +
 			"Flags:\n" +
 			fmt.Sprintf("  %-28s %s\n", harnessProfileFlag+" <name>", "Saved profile to run as (also "+profileEnv+")") +
-			fmt.Sprintf("  %-28s %s\n", harnessModelFlag+" <id>", "Model to use for this run (any Requesty model id)") +
+			fmt.Sprintf("  %-28s %s\n", harnessModelFlag+" <id>", "Model for this run only (a managed policy or any Requesty model id)") +
+			fmt.Sprintf("  %-28s %s\n", harnessChooseModelFlag, "Pick the model to launch with from now on") +
 			fmt.Sprintf("  %-28s %s\n", harnessEffortFlag+" <level>", "Reasoning effort: "+strings.Join(harnesses.Efforts, ", ")) +
 			fmt.Sprintf("  %-28s %s\n\n", "-h, --help", "Show this help") +
-			fmt.Sprintf("Anything else, or everything after `--`, is passed to `%s` untouched.\n\n", binary),
+			fmt.Sprintf("Anything else, or everything after `--`, is passed to `%s` untouched.\n\n", spec.binary) +
+			"Without --model, the model picked for this harness in the profile is used. The first\n" +
+			fmt.Sprintf("time, a picker asks (suggesting %s) and remembers the answer.\n\n", spec.defaultModel),
 		// We take over parsing so harness flags are never interpreted as ours.
 		DisableFlagParsing:    true,
 		DisableFlagsInUseLine: true,
@@ -69,14 +95,19 @@ func newHarnessCommand(env *environment, binary, displayName string, newHarness 
 				return err
 			}
 
-			cfg, err := env.ensureProfile(cmd, parsed.profile, displayName)
+			cfg, err := env.ensureProfile(cmd, parsed.profile, spec.displayName)
 			if err != nil {
 				return err
 			}
 
-			harness, err := newHarness(cfg)
+			harness, err := spec.newHarness(cfg)
 			if err != nil {
-				return fmt.Errorf("failed to set up %s: %w", displayName, err)
+				return fmt.Errorf("failed to set up %s: %w", spec.displayName, err)
+			}
+
+			parsed.launch.Model, err = env.ensureModel(cmd, cfg, spec, parsed)
+			if err != nil {
+				return err
 			}
 
 			return harness.Launch(parsed.launch)
@@ -89,8 +120,9 @@ func newHarnessCommand(env *environment, binary, displayName string, newHarness 
 // harnessArgs is a harness command line split into our profile choice and
 // what the harness is launched with.
 type harnessArgs struct {
-	profile string
-	launch  harnesses.LaunchOptions
+	profile     string
+	chooseModel bool
+	launch      harnesses.LaunchOptions
 }
 
 // parseHarnessArgs splits our leading flags from the harness's own arguments.
@@ -102,16 +134,21 @@ type harnessArgs struct {
 func parseHarnessArgs(args []string) (harnessArgs, error) {
 	var parsed harnessArgs
 
+flags:
 	for len(args) > 0 {
 		arg := args[0]
 
 		switch {
 		case arg == "--":
 			parsed.launch.Args = args[1:]
-			return parsed, nil
+			break flags
 
 		case arg == "-h" || arg == "--help":
 			return parsed, errHarnessHelp
+
+		case arg == harnessChooseModelFlag:
+			parsed.chooseModel = true
+			args = args[1:]
 
 		case arg == harnessProfileFlag || arg == harnessModelFlag || arg == harnessEffortFlag:
 			if len(args) < 2 {
@@ -131,8 +168,12 @@ func parseHarnessArgs(args []string) (harnessArgs, error) {
 
 		default:
 			parsed.launch.Args = args
-			return parsed, nil
+			break flags
 		}
+	}
+
+	if parsed.chooseModel && parsed.launch.Model != "" {
+		return parsed, fmt.Errorf("%s and %s cannot be combined", harnessModelFlag, harnessChooseModelFlag)
 	}
 
 	return parsed, nil
