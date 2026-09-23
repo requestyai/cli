@@ -20,9 +20,10 @@ type ConfigureOptions struct {
 }
 
 type LaunchOptions struct {
-	// Model overrides the harness's default model for this run. Empty leaves
-	// whatever the harness would pick on its own (including a model our
-	// Configure wrote into its settings file earlier).
+	// Model is what the harness is told to use: a managed policy or any
+	// Requesty model id. Empty leaves whatever the harness would pick on its
+	// own (including a model our Configure wrote into its settings file
+	// earlier), which a gateway with an access list may well reject.
 	Model string
 	// Effort is one of Efforts, or empty for the harness default.
 	Effort string

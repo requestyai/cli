@@ -25,9 +25,18 @@ var ErrNoProfiles = errors.New("no Requesty profile configured; run `requesty lo
 // Config is what a client or harness runs with: an API key and the router it
 // is sent to. The settings file holds one per profile.
 type Config struct {
-	Name          string `json:"-"`
-	APIKey        string `json:"api_key"`
-	RouterBaseURL string `json:"router_base_url"`
+	Name          string            `json:"-"`
+	APIKey        string            `json:"api_key"`
+	RouterBaseURL string            `json:"router_base_url"`
+	HarnessModels map[string]string `json:"harness_models,omitempty"`
+}
+
+// SetHarnessModel remembers model as the one to launch harness with.
+func (c *Config) SetHarnessModel(harness, model string) {
+	if c.HarnessModels == nil {
+		c.HarnessModels = make(map[string]string)
+	}
+	c.HarnessModels[harness] = model
 }
 
 func (c Config) APIBaseURL() string {

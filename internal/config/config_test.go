@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -122,13 +123,23 @@ func TestLoadRejectsInvalidStore(t *testing.T) {
 func TestSaveRoundTrips(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	var store Store
-	store.Set("work", Config{APIKey: "rqsty-work", RouterBaseURL: "https://router.eu.example"})
+	work := Config{APIKey: "rqsty-work", RouterBaseURL: "https://router.eu.example"}
+	work.SetHarnessModel("claude", "claude-sonnet-4-6")
+	store.Set("work", work)
 
 	require.NoError(t, Save(store))
 	got, err := Load()
 
 	require.NoError(t, err)
 	assert.Equal(t, store, got)
+	assert.Equal(t, "claude-sonnet-4-6", got.Profiles["work"].HarnessModels["claude"])
+}
+
+func TestHarnessModelsAreOmittedUntilSet(t *testing.T) {
+	data, err := json.Marshal(Config{APIKey: "k", RouterBaseURL: DefaultRouterBaseURL})
+
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "harness_models")
 }
 
 func TestResolve(t *testing.T) {

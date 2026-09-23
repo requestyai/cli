@@ -96,12 +96,21 @@ unless you pass `--profile`.
 
 `requesty claude` and `requesty codex` start the harness with its traffic routed through Requesty
 for that run only; nothing on disk is changed. The current profile is used unless you select
-another. A model flag applies only to that run; without it, the harness uses its configured model.
+another.
+
+The first time you launch a harness from a profile, a picker asks which model it should use and
+remembers the answer in the profile. The Policies tab lists Requesty's managed policies, which name
+a model once (`claude-sonnet-4-6`) and route it across providers; `tab` switches to every model
+the key can route to. The cursor starts on the harness's recommended default, so enter is usually
+all it takes. `--model` overrides the remembered model for one run without changing it;
+`--choose-model` opens the picker again to change it. In a script or CI with no terminal to ask
+in, pass `--model`, or pick once interactively first.
 
 ```sh
-requesty claude                                    # current profile, harness's configured model
-requesty claude --profile eu                       # a named profile
+requesty claude                                    # current profile, remembered model (asks the first time)
+requesty claude --profile eu                       # a named profile, with its own remembered model
 requesty claude --model anthropic/claude-opus-4-1  # this model, just for this run
+requesty claude --choose-model                     # pick again and remember the new answer
 requesty codex --reasoning-effort high -- --full-auto
 ```
 
