@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
@@ -91,53 +92,112 @@ func (env *environment) ensureProfile(cmd *cobra.Command, name, harness string) 
 	return cfg, nil
 }
 
-// ensureModel returns the model the harness launches with, running the
-// picker when the profile has none for it yet and saving the answer.
-func (env *environment) ensureModel(cmd *cobra.Command, cfg config.Config, spec harnessSpec, parsed harnessArgs) (string, error) {
-	model, ask := modelToLaunch(cfg, spec, parsed)
-	if !ask {
-		return model, nil
+// ensureModels returns the model the harness launches with and, for
+// harnesses that have one, the model its background work goes to. Whatever
+// the picker decides is saved in the profile.
+func (env *environment) ensureModels(cmd *cobra.Command, cfg config.Config, spec harnessSpec, parsed harnessArgs) (model, fast string, err error) {
+	model, pickedModel, err := env.ensureModel(cmd, cfg, modelRequest{
+		what:       spec.displayName,
+		flag:       harnessModelFlag,
+		chooseFlag: harnessChooseModelFlag,
+		flagged:    parsed.launch.Model,
+		choose:     parsed.chooseModel,
+		saved:      cfg.HarnessModels[spec.binary],
+		defaults:   spec.defaultModels,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	if pickedModel {
+		// This also forgets the fast model, so it is picked again below to
+		// go with the new main model.
+		cfg.SetHarnessModel(spec.binary, model)
 	}
 
-	picked, err := modelpicker.Run(cmd.Context(), modelpicker.Options{
+	pickedFast := false
+	if spec.hasFastModel() {
+		// The main model is the last resort: it is known to be permitted,
+		// so an access list without any smaller model still works.
+		fast, pickedFast, err = env.ensureModel(cmd, cfg, modelRequest{
+			what:       spec.displayName + " background work",
+			flag:       harnessFastModelFlag,
+			chooseFlag: harnessChooseFastModelFlag,
+			flagged:    parsed.launch.FastModel,
+			choose:     parsed.chooseFastModel,
+			saved:      cfg.HarnessFastModels[spec.binary],
+			defaults:   slices.Concat(spec.defaultFastModels, []string{model}),
+		})
+		if err != nil {
+			return "", "", err
+		}
+		if pickedFast {
+			cfg.SetHarnessFastModel(spec.binary, fast)
+		}
+	}
+
+	if pickedModel || pickedFast {
+		if err := env.save(cfg.Name, cfg); err != nil {
+			return "", "", err
+		}
+	}
+
+	return model, fast, nil
+}
+
+// modelRequest is how one of a harness's models was asked for on this run.
+type modelRequest struct {
+	// what is shown in the picker title and in messages: "Claude Code",
+	// "Claude Code background work".
+	what string
+	// flag is the one to pass instead when there is no terminal to ask in;
+	// chooseFlag is the one that opens the picker again later.
+	flag, chooseFlag string
+	// flagged is the value of flag, for this run only.
+	flagged string
+	// choose says chooseFlag was passed: open the picker even if saved.
+	choose bool
+	// saved is what the profile remembers, if anything.
+	saved string
+	// defaults are tried in order when nothing is saved; the first one the
+	// profile can route to is used without asking.
+	defaults []string
+}
+
+// ensureModel returns the model for one request: the flag for this run
+// only, else the saved one, else whatever the picker decides, which it
+// reports through picked so the caller knows to save it.
+func (env *environment) ensureModel(cmd *cobra.Command, cfg config.Config, req modelRequest) (model string, picked bool, err error) {
+	switch {
+	case req.flagged != "":
+		return req.flagged, false, nil
+	case req.saved != "" && !req.choose:
+		return req.saved, false, nil
+	}
+
+	preferred := req.defaults
+	if req.saved != "" {
+		preferred = slices.Concat([]string{req.saved}, req.defaults)
+	}
+	model, asked, err := modelpicker.Run(cmd.Context(), modelpicker.Options{
 		Client:    client.New(cfg),
-		Harness:   spec.displayName,
-		Preselect: model,
+		Harness:   req.what,
+		Preferred: preferred,
+		Confirm:   req.choose,
 	})
 	if errors.Is(err, modelpicker.ErrCancelled) {
-		return "", err
+		return "", false, err
 	}
 	if err != nil {
 		// Most often there is no terminal to ask in, such as a script or CI.
-		return "", fmt.Errorf("no model picked for %s in profile %q; pass %s <id> or run in a terminal once (%w)", spec.displayName, cfg.Name, harnessModelFlag, err)
+		return "", false, fmt.Errorf("no model picked for %s in profile %q; pass %s <id> or run in a terminal once (%w)", req.what, cfg.Name, req.flag, err)
+	}
+	if !asked {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Using %s for %s; change with %s.\n", model, req.what, req.chooseFlag); err != nil {
+			return "", false, err
+		}
 	}
 
-	cfg.SetHarnessModel(spec.binary, picked)
-	if err := env.save(cfg.Name, cfg); err != nil {
-		return "", err
-	}
-
-	return picked, nil
-}
-
-// modelToLaunch applies the rules for which model a harness launches with:
-// --model for this run only, else the model picked for this harness in the
-// profile, else ask. When asking, model is what the picker should suggest:
-// the saved model that --choose-model is replacing, or the harness default.
-func modelToLaunch(cfg config.Config, spec harnessSpec, parsed harnessArgs) (model string, ask bool) {
-	if parsed.launch.Model != "" {
-		return parsed.launch.Model, false
-	}
-
-	saved := cfg.HarnessModels[spec.binary]
-	if saved != "" && !parsed.chooseModel {
-		return saved, false
-	}
-	if saved != "" {
-		return saved, true
-	}
-
-	return spec.defaultModel, true
+	return model, true, nil
 }
 
 // save stores cfg as the named profile and writes the file. The first profile

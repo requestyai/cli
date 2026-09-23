@@ -205,6 +205,13 @@ func (c *ClaudeHarness) Launch(opts LaunchOptions) error {
 	if opts.Model != "" {
 		env["ANTHROPIC_MODEL"] = opts.Model
 	}
+	if opts.FastModel != "" {
+		// The haiku alias covers background work (titles, summaries,
+		// subagents declared as haiku). ANTHROPIC_SMALL_FAST_MODEL is the
+		// name versions before 2.1.2 read; both get the same value.
+		env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = opts.FastModel
+		env["ANTHROPIC_SMALL_FAST_MODEL"] = opts.FastModel
+	}
 
 	argv := []string{"claude"}
 	if !hasAnyFlag(opts.Args, claudeSettingsFlags) {

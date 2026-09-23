@@ -25,18 +25,35 @@ var ErrNoProfiles = errors.New("no Requesty profile configured; run `requesty lo
 // Config is what a client or harness runs with: an API key and the router it
 // is sent to. The settings file holds one per profile.
 type Config struct {
-	Name          string            `json:"-"`
-	APIKey        string            `json:"api_key"`
-	RouterBaseURL string            `json:"router_base_url"`
+	Name          string `json:"-"`
+	APIKey        string `json:"api_key"`
+	RouterBaseURL string `json:"router_base_url"`
+	// HarnessModels is the model each harness was picked to launch with.
 	HarnessModels map[string]string `json:"harness_models,omitempty"`
+	// HarnessFastModels is the model each harness hands background work to,
+	// for harnesses that have such a slot. Kept apart from HarnessModels so
+	// a settings file stays readable by versions before it existed.
+	HarnessFastModels map[string]string `json:"harness_fast_models,omitempty"`
 }
 
-// SetHarnessModel remembers model as the one to launch harness with.
+// SetHarnessModel remembers model as the one to launch harness with. It also
+// forgets the fast model: a new main model may sit in another region, so
+// what goes alongside it is settled afresh.
 func (c *Config) SetHarnessModel(harness, model string) {
 	if c.HarnessModels == nil {
 		c.HarnessModels = make(map[string]string)
 	}
 	c.HarnessModels[harness] = model
+	delete(c.HarnessFastModels, harness)
+}
+
+// SetHarnessFastModel remembers model as the one harness hands background
+// work to.
+func (c *Config) SetHarnessFastModel(harness, model string) {
+	if c.HarnessFastModels == nil {
+		c.HarnessFastModels = make(map[string]string)
+	}
+	c.HarnessFastModels[harness] = model
 }
 
 func (c Config) APIBaseURL() string {

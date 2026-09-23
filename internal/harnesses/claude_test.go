@@ -74,9 +74,10 @@ func TestClaudeHarnessLaunchInjectsRequesty(t *testing.T) {
 	harness := NewClaudeHarness(cfg, t.TempDir())
 
 	err := harness.Launch(LaunchOptions{
-		Model:  "anthropic/claude-fable-5",
-		Effort: EffortHigh,
-		Args:   []string{"--dangerously-skip-permissions", "-p", "hello"},
+		Model:     "anthropic/claude-fable-5",
+		FastModel: "claude-haiku-4-5",
+		Effort:    EffortHigh,
+		Args:      []string{"--dangerously-skip-permissions", "-p", "hello"},
 		Env: []string{
 			"HOME=/home/me",
 			"ANTHROPIC_AUTH_TOKEN=stale-token",
@@ -93,6 +94,8 @@ func TestClaudeHarnessLaunchInjectsRequesty(t *testing.T) {
 	assert.Contains(t, captured.env, "ANTHROPIC_API_KEY=my-api-key")
 	assert.Contains(t, captured.env, "REQUESTY_API_KEY=my-api-key")
 	assert.Contains(t, captured.env, "ANTHROPIC_MODEL=anthropic/claude-fable-5")
+	assert.Contains(t, captured.env, "ANTHROPIC_DEFAULT_HAIKU_MODEL=claude-haiku-4-5")
+	assert.Contains(t, captured.env, "ANTHROPIC_SMALL_FAST_MODEL=claude-haiku-4-5")
 	assert.Contains(t, captured.env, "CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK=1")
 	for _, entry := range captured.env {
 		assert.NotContains(t, entry, "ANTHROPIC_AUTH_TOKEN=", "the bearer token path must be cleared")
@@ -133,6 +136,7 @@ func TestClaudeHarnessLaunchWithoutOverridesIsMinimal(t *testing.T) {
 	assert.Equal(t, "--settings", captured.argv[1])
 	for _, entry := range captured.env {
 		assert.NotContains(t, entry, "ANTHROPIC_MODEL=", "no model means the harness keeps its default")
+		assert.NotContains(t, entry, "ANTHROPIC_DEFAULT_HAIKU_MODEL=", "no fast model means the harness keeps its default")
 	}
 }
 

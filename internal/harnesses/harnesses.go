@@ -25,6 +25,11 @@ type LaunchOptions struct {
 	// own (including a model our Configure wrote into its settings file
 	// earlier), which a gateway with an access list may well reject.
 	Model string
+	// FastModel is what the harness hands background work to, such as
+	// Claude Code's haiku alias. Empty leaves the harness's own default,
+	// which is an Anthropic model id a gateway does not know. Harnesses
+	// without such a slot ignore it.
+	FastModel string
 	// Effort is one of Efforts, or empty for the harness default.
 	Effort string
 	// Args is passed to the harness binary untouched, after our own flags.
