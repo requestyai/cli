@@ -192,7 +192,7 @@ func TestHarnessCommandHelpShowsOurFlags(t *testing.T) {
 	assert.Contains(t, output.String(), "--choose-fast-model")
 	assert.NotContains(t, output.String(), "reasoning-effort", "effort belongs to the harness's own flags")
 	assert.Contains(t, output.String(), "passed to `claude`")
-	assert.Contains(t, output.String(), "claude-sonnet-4-6 is used when the profile can route to it")
+	assert.Contains(t, output.String(), "claude-sonnet-5 is used when the profile can route to it")
 	assert.Contains(t, output.String(), "claude-haiku-4-5")
 }
 
@@ -206,6 +206,17 @@ func TestHarnessWithoutFastModelHidesItsFlags(t *testing.T) {
 
 	assert.Contains(t, output.String(), "--choose-model")
 	assert.NotContains(t, output.String(), "fast-model")
+}
+
+func TestHarnessHelpListsEveryDefault(t *testing.T) {
+	command := newRootCommand(&environment{store: oneProfile})
+	var output bytes.Buffer
+	command.SetOut(&output)
+	command.SetArgs([]string{"opencode", "--help"})
+
+	require.NoError(t, command.Execute())
+
+	assert.Contains(t, output.String(), "the first of claude-sonnet-5 or gpt-6-sol the profile can route to is used")
 }
 
 func TestHarnessWithoutFastModelRejectsItsFlags(t *testing.T) {
