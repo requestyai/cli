@@ -55,7 +55,7 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 		newHarnessCommand(env, harnessSpec{
 			binary:            "claude",
 			displayName:       "Claude Code",
-			defaultModels:     []string{"claude-sonnet-4-6"},
+			defaultModels:     []string{"claude-sonnet-5"},
 			defaultFastModels: []string{"claude-haiku-4-5"},
 			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
 				dir, err := harnesses.DefaultConfigDirClaudeCode()
@@ -68,7 +68,7 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 		newHarnessCommand(env, harnessSpec{
 			binary:        "codex",
 			displayName:   "Codex",
-			defaultModels: []string{"gpt-5.5"},
+			defaultModels: []string{"gpt-6-sol"},
 			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
 				dir, err := harnesses.DefaultConfigDirCodex()
 				if err != nil {
@@ -80,7 +80,7 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 		newHarnessCommand(env, harnessSpec{
 			binary:        "opencode",
 			displayName:   "OpenCode",
-			defaultModels: []string{"claude-sonnet-4-6"},
+			defaultModels: []string{"claude-sonnet-5", "gpt-6-sol"},
 			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
 				dir, err := harnesses.DefaultConfigDirOpenCode()
 				if err != nil {
@@ -92,7 +92,7 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 		newHarnessCommand(env, harnessSpec{
 			binary:        "pi",
 			displayName:   "Pi",
-			defaultModels: []string{"claude-sonnet-4-6"},
+			defaultModels: []string{"claude-sonnet-5", "gpt-6-sol"},
 			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
 				dir, err := harnesses.DefaultConfigDirPi()
 				if err != nil {
@@ -104,7 +104,7 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 		newHarnessCommand(env, harnessSpec{
 			binary:        "hermes",
 			displayName:   "Hermes",
-			defaultModels: []string{"claude-sonnet-4-6"},
+			defaultModels: []string{"claude-sonnet-5", "gpt-6-sol"},
 			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
 				dir, err := harnesses.DefaultConfigDirHermes()
 				if err != nil {
@@ -190,14 +190,24 @@ func harnessLong(spec harnessSpec) string {
 		fmt.Fprintf(&b, "  %-28s %s\n", flag[0], flag[1])
 	}
 	fmt.Fprintf(&b, "\nAnything else, or everything after `--`, is passed to `%s` untouched.\n\n", spec.binary)
-	fmt.Fprintf(&b, "The first launch settles the model: %s is used when the profile can route to it,\n", spec.defaultModels[0])
+	fmt.Fprintf(&b, "The first launch settles the model: %s,\n", describeDefaults(spec.defaultModels))
 	fmt.Fprintf(&b, "else a picker asks. The answer is remembered in the profile.")
 	if spec.hasFastModel() {
-		fmt.Fprintf(&b, " Background work is settled\nthe same way, preferring %s.", spec.defaultFastModels[0])
+		fmt.Fprintf(&b, " Background work is settled\nthe same way, preferring %s.", strings.Join(spec.defaultFastModels, ", then "))
 	}
 	b.WriteString("\n")
 
 	return b.String()
+}
+
+// describeDefaults says in help text how the defaults are settled: the one
+// model is used when it can be routed to, or the first of several that can.
+func describeDefaults(models []string) string {
+	if len(models) == 1 {
+		return models[0] + " is used when the profile can route to it"
+	}
+
+	return fmt.Sprintf("the first of %s the profile can route to is used", strings.Join(models, " or "))
 }
 
 // harnessArgs is a harness command line split into our profile choice and

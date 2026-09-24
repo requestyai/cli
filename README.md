@@ -101,7 +101,8 @@ configuration is not changed. The current profile is used unless you select anot
 
 The first time you launch a harness from a profile, the CLI settles which model it should use and
 remembers the answer in the profile. When the key can route to the harness's recommended default
-(`claude-sonnet-4-6` for Claude Code), that is used and printed, without asking. Otherwise a
+(`claude-sonnet-5` for Claude Code, `gpt-6-sol` for Codex, and for OpenCode, Pi and Hermes whichever
+of the two the key can route to first), that is used and printed, without asking. Otherwise a
 picker asks: the Policies tab lists Requesty's managed policies, which name a model once and
 route it across providers, and `tab` switches to every model the key can route to. `--model`
 overrides the remembered model for one run without changing it; `--choose-model` opens the picker
@@ -122,7 +123,7 @@ requesty claude --choose-model                     # pick again and remember the
 requesty claude --choose-fast-model                # pick what background work runs on
 requesty codex --full-auto                         # everything else goes to the harness untouched
 requesty claude --effort high                      # so its own flags work as usual
-requesty opencode --model gpt-5.5 run "explain this repo"
+requesty opencode --model gpt-6-sol run "explain this repo"
 requesty pi --thinking off
 requesty hermes chat -q "hello"
 ```
