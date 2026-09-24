@@ -78,6 +78,42 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 				return harnesses.NewCodexHarness(cfg, dir), nil
 			},
 		}),
+		newHarnessCommand(env, harnessSpec{
+			binary:        "opencode",
+			displayName:   "OpenCode",
+			defaultModels: []string{"claude-sonnet-4-6"},
+			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
+				dir, err := harnesses.DefaultConfigDirOpenCode()
+				if err != nil {
+					return nil, err
+				}
+				return harnesses.NewOpenCodeHarness(cfg, dir), nil
+			},
+		}),
+		newHarnessCommand(env, harnessSpec{
+			binary:        "pi",
+			displayName:   "Pi",
+			defaultModels: []string{"claude-sonnet-4-6"},
+			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
+				dir, err := harnesses.DefaultConfigDirPi()
+				if err != nil {
+					return nil, err
+				}
+				return harnesses.NewPiHarness(cfg, dir), nil
+			},
+		}),
+		newHarnessCommand(env, harnessSpec{
+			binary:        "hermes",
+			displayName:   "Hermes",
+			defaultModels: []string{"claude-sonnet-4-6"},
+			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
+				dir, err := harnesses.DefaultConfigDirHermes()
+				if err != nil {
+					return nil, err
+				}
+				return harnesses.NewHermesHarness(cfg, dir), nil
+			},
+		}),
 	}
 }
 

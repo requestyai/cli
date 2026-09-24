@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/requestyai/cli/internal/config"
 	"gopkg.in/yaml.v3"
@@ -42,8 +43,13 @@ type HermesHarness struct {
 	configDir string
 }
 
-// DefaultConfigDirHermes is where Hermes keeps its configuration.
+// DefaultConfigDirHermes is where Hermes keeps its configuration. Hermes
+// reads HERMES_HOME first, so an explicit home wins over the default one.
 func DefaultConfigDirHermes() (string, error) {
+	if home := os.Getenv("HERMES_HOME"); home != "" {
+		return home, nil
+	}
+
 	return configDirInHome(".hermes")
 }
 
@@ -68,8 +74,9 @@ func (h *HermesHarness) Description() []string {
 func (h *HermesHarness) Status() (Status, error) {
 	status := Status{}
 
-	if _, err := exec.LookPath("hermes"); err == nil {
+	if path, err := exec.LookPath("hermes"); err == nil {
 		status.Executable = true
+		status.ExecutablePath = path
 	} else if !errors.Is(err, exec.ErrNotFound) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
@@ -112,8 +119,129 @@ func (h *HermesHarness) Status() (Status, error) {
 	return status, nil
 }
 
-func (h *HermesHarness) Launch(LaunchOptions) error {
-	return launchNotImplemented(h.Name())
+// hermesEfforts maps Launch effort levels onto Hermes's --reasoning values,
+// which take the level name as is.
+var hermesEfforts = map[string]string{
+	EffortMinimal: "minimal",
+	EffortLow:     "low",
+	EffortMedium:  "medium",
+	EffortHigh:    "high",
+	EffortXHigh:   "xhigh",
+	EffortMax:     "max",
+}
+
+// hermesProviderFlags, hermesModelFlags and hermesReasoningFlags are the
+// Hermes flags that, when the user passes them, mean we leave the
+// corresponding choice alone.
+var (
+	hermesProviderFlags  = []string{"--provider"}
+	hermesModelFlags     = []string{"-m", "--model"}
+	hermesReasoningFlags = []string{"--reasoning"}
+)
+
+// hermesLaunchEnv are the variables the launch sets; a ~/.hermes/.env that
+// redefines one of them wins over us, so they are what we check for.
+var hermesLaunchEnv = []string{"CUSTOM_BASE_URL", "REQUESTY_API_KEY"}
+
+// Launch replaces this process with Hermes pointed at Requesty. Hermes's
+// `custom` provider takes its endpoint from CUSTOM_BASE_URL and derives the
+// key variable from the endpoint's host, which for router.requesty.ai is
+// REQUESTY_API_KEY. The custom provider speaks OpenAI chat completions, so
+// the base URL keeps its /v1 suffix. Nothing is written to disk.
+func (h *HermesHarness) Launch(opts LaunchOptions) error {
+	status, err := h.Status()
+	if err != nil {
+		return fmt.Errorf("failed to check %s: %w", h.Name(), err)
+	}
+	if !status.Executable {
+		return fmt.Errorf("`hermes` is not on PATH; install Hermes (https://hermes-agent.nousresearch.com/docs/getting-started/quickstart) and try again")
+	}
+
+	effort, err := mapEffort(h.Name(), hermesEfforts, opts.Effort)
+	if err != nil {
+		return err
+	}
+
+	env := parseEnvironmentVariables(opts.Env)
+	env["CUSTOM_BASE_URL"] = h.config.RouterBaseURL + "/v1"
+	env["REQUESTY_API_KEY"] = h.config.APIKey
+
+	if warning, conflict := h.credentialConflict(env); conflict {
+		_, _ = fmt.Fprintln(os.Stderr, warning)
+	}
+
+	argv := []string{"hermes"}
+	if !hasAnyFlag(opts.Args, hermesProviderFlags) {
+		argv = append(argv, "--provider", "custom")
+	}
+	if opts.Model != "" && !hasAnyFlag(opts.Args, hermesModelFlags) {
+		argv = append(argv, "-m", opts.Model)
+	}
+	if effort != "" && !hasAnyFlag(opts.Args, hermesReasoningFlags) {
+		argv = append(argv, "--reasoning", effort)
+	}
+	argv = append(argv, opts.Args...)
+
+	if err := execProcess(status.ExecutablePath, argv, formatEnvironmentVariables(env)); err != nil {
+		return fmt.Errorf("failed to launch hermes: %w", err)
+	}
+
+	return nil
+}
+
+// credentialConflict reports a value in Hermes's .env file that would
+// replace one of ours: Hermes loads that file over the process environment,
+// so a stale entry there sends requests elsewhere or with another key.
+func (h *HermesHarness) credentialConflict(env map[string]string) (string, bool) {
+	envPath := h.envPath()
+
+	data, err := os.ReadFile(envPath)
+	if err != nil {
+		return "", false
+	}
+
+	stored := parseDotEnv(string(data))
+	conflicting := make([]string, 0, len(hermesLaunchEnv))
+	for _, key := range hermesLaunchEnv {
+		if value, ok := stored[key]; ok && value != env[key] {
+			conflicting = append(conflicting, key)
+		}
+	}
+	if len(conflicting) == 0 {
+		return "", false
+	}
+
+	return fmt.Sprintf("Warning: %s in %s takes precedence over the values Requesty sets for this run. Remove or update it there if Hermes does not reach Requesty.", strings.Join(conflicting, " and "), envPath), true
+}
+
+// parseDotEnv reads KEY=value lines the way Hermes's dotenv loader does for
+// the cases that matter here: comments and blanks are skipped, `export` is
+// allowed, and matching quotes around the value are removed.
+func parseDotEnv(content string) map[string]string {
+	values := make(map[string]string)
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+
+		key, value, found := strings.Cut(line, "=")
+		if !found {
+			continue
+		}
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+			value = value[1 : len(value)-1]
+		}
+		values[key] = value
+	}
+
+	return values
+}
+
+func (h *HermesHarness) envPath() string {
+	return filepath.Join(h.configDir, ".env")
 }
 
 func (h *HermesHarness) Configure(opts ConfigureOptions) error {
