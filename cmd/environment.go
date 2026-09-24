@@ -16,8 +16,6 @@ const (
 	// profileFlag names the saved profile to run with. It lives on the root
 	// so every subcommand inherits it; harness commands parse it themselves.
 	profileFlag = "profile"
-	// profileEnv is the environment variable that stands in for --profile.
-	profileEnv = "REQUESTY_PROFILE"
 	// defaultProfileName is what onboarding calls the first profile.
 	defaultProfileName = "default"
 )
@@ -29,6 +27,8 @@ type environment struct {
 	session *session
 }
 
+// session is the resolved profile and the client built from it, set once the
+// profile for a command has been picked.
 type session struct {
 	config config.Config
 	client *client.Client
@@ -63,7 +63,7 @@ func (env *environment) requireProfile(cmd *cobra.Command, _ []string) error {
 // resolveProfile returns the profile selected for this command.
 func (env *environment) resolveProfile(cmd *cobra.Command, name string) (config.Config, error) {
 	if name == "" {
-		name = requestedProfile(cmd)
+		name, _ = cmd.Flags().GetString(profileFlag)
 	}
 
 	return env.store.Resolve(name)
@@ -93,25 +93,25 @@ func (env *environment) ensureProfile(cmd *cobra.Command, name, harness string) 
 }
 
 // ensureModels returns the model the harness launches with and, for
-// harnesses that have one, the model its background work goes to. Whatever
-// the picker decides is saved in the profile.
+// harnesses that have one, the model its background work goes to.
 func (env *environment) ensureModels(cmd *cobra.Command, cfg config.Config, spec harnessSpec, parsed harnessArgs) (model, fast string, err error) {
 	model, pickedModel, err := env.ensureModel(cmd, cfg, modelRequest{
-		what:       spec.displayName,
-		flag:       harnessModelFlag,
-		chooseFlag: harnessChooseModelFlag,
-		flagged:    parsed.launch.Model,
-		choose:     parsed.chooseModel,
-		saved:      cfg.HarnessModels[spec.binary],
-		defaults:   spec.defaultModels,
+		displayName:  spec.displayName,
+		override:     parsed.launch.Model,
+		overrideFlag: harnessModelFlag,
+		ask:          parsed.chooseModel,
+		askFlag:      harnessChooseModelFlag,
+		saved:        cfg.HarnessModels[spec.binary],
+		defaults:     spec.defaultModels,
 	})
 	if err != nil {
 		return "", "", err
 	}
 	if pickedModel {
-		// This also forgets the fast model, so it is picked again below to
-		// go with the new main model.
 		cfg.SetHarnessModel(spec.binary, model)
+		// A new main model may sit in another region, so the fast model is
+		// forgotten and picked again below to go with it.
+		delete(cfg.HarnessFastModels, spec.binary)
 	}
 
 	pickedFast := false
@@ -119,13 +119,13 @@ func (env *environment) ensureModels(cmd *cobra.Command, cfg config.Config, spec
 		// The main model is the last resort: it is known to be permitted,
 		// so an access list without any smaller model still works.
 		fast, pickedFast, err = env.ensureModel(cmd, cfg, modelRequest{
-			what:       spec.displayName + " background work",
-			flag:       harnessFastModelFlag,
-			chooseFlag: harnessChooseFastModelFlag,
-			flagged:    parsed.launch.FastModel,
-			choose:     parsed.chooseFastModel,
-			saved:      cfg.HarnessFastModels[spec.binary],
-			defaults:   slices.Concat(spec.defaultFastModels, []string{model}),
+			displayName:  spec.displayName + " background work",
+			override:     parsed.launch.FastModel,
+			overrideFlag: harnessFastModelFlag,
+			ask:          parsed.chooseFastModel,
+			askFlag:      harnessChooseFastModelFlag,
+			saved:        cfg.HarnessFastModels[spec.binary],
+			defaults:     slices.Concat(spec.defaultFastModels, []string{model}),
 		})
 		if err != nil {
 			return "", "", err
@@ -146,16 +146,17 @@ func (env *environment) ensureModels(cmd *cobra.Command, cfg config.Config, spec
 
 // modelRequest is how one of a harness's models was asked for on this run.
 type modelRequest struct {
-	// what is shown in the picker title and in messages: "Claude Code",
+	// displayName is shown in the picker title and in messages: "Claude Code",
 	// "Claude Code background work".
-	what string
-	// flag is the one to pass instead when there is no terminal to ask in;
-	// chooseFlag is the one that opens the picker again later.
-	flag, chooseFlag string
-	// flagged is the value of flag, for this run only.
-	flagged string
-	// choose says chooseFlag was passed: open the picker even if saved.
-	choose bool
+	displayName string
+	// override is the model for this run only, from overrideFlag.
+	override string
+	// overrideFlag is "--model" or "--fast-model", for messages.
+	overrideFlag string
+	// ask says askFlag was passed: open the picker even if saved.
+	ask bool
+	// askFlag is "--choose-model" or "--choose-fast-model", for messages.
+	askFlag string
 	// saved is what the profile remembers, if anything.
 	saved string
 	// defaults are tried in order when nothing is saved; the first one the
@@ -163,14 +164,14 @@ type modelRequest struct {
 	defaults []string
 }
 
-// ensureModel returns the model for one request: the flag for this run
+// ensureModel returns the model for one request: the override for this run
 // only, else the saved one, else whatever the picker decides, which it
 // reports through picked so the caller knows to save it.
 func (env *environment) ensureModel(cmd *cobra.Command, cfg config.Config, req modelRequest) (model string, picked bool, err error) {
 	switch {
-	case req.flagged != "":
-		return req.flagged, false, nil
-	case req.saved != "" && !req.choose:
+	case req.override != "":
+		return req.override, false, nil
+	case req.saved != "" && !req.ask:
 		return req.saved, false, nil
 	}
 
@@ -180,19 +181,19 @@ func (env *environment) ensureModel(cmd *cobra.Command, cfg config.Config, req m
 	}
 	model, asked, err := modelpicker.Run(cmd.Context(), modelpicker.Options{
 		Client:    client.New(cfg),
-		Harness:   req.what,
+		Harness:   req.displayName,
 		Preferred: preferred,
-		Confirm:   req.choose,
+		Confirm:   req.ask,
 	})
 	if errors.Is(err, modelpicker.ErrCancelled) {
 		return "", false, err
 	}
 	if err != nil {
 		// Most often there is no terminal to ask in, such as a script or CI.
-		return "", false, fmt.Errorf("no model picked for %s in profile %q; pass %s <id> or run in a terminal once (%w)", req.what, cfg.Name, req.flag, err)
+		return "", false, fmt.Errorf("no model picked for %s in profile %q; pass %s <id> or run in a terminal once (%w)", req.displayName, cfg.Name, req.overrideFlag, err)
 	}
 	if !asked {
-		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Using %s for %s; change with %s.\n", model, req.what, req.chooseFlag); err != nil {
+		if _, err := fmt.Fprintf(cmd.ErrOrStderr(), "Using %s for %s; change with %s.\n", model, req.displayName, req.askFlag); err != nil {
 			return "", false, err
 		}
 	}

@@ -176,23 +176,11 @@ type piCatalogCost struct {
 	CacheWrite float64 `json:"cacheWrite"`
 }
 
-// piEfforts maps Launch effort levels onto Pi's --thinking values, which
-// take the level name as is.
-var piEfforts = map[string]string{
-	EffortMinimal: "minimal",
-	EffortLow:     "low",
-	EffortMedium:  "medium",
-	EffortHigh:    "high",
-	EffortXHigh:   "xhigh",
-	EffortMax:     "max",
-}
-
-// piProviderFlags, piModelFlags and piThinkingFlags are the Pi flags that,
-// when the user passes them, mean we leave the corresponding choice alone.
+// piProviderFlags and piModelFlags are the Pi flags that, when the user
+// passes them, mean we leave the model choice alone.
 var (
 	piProviderFlags = []string{"--provider"}
 	piModelFlags    = []string{"--model"}
-	piThinkingFlags = []string{"--thinking"}
 )
 
 // piNeutralizedEnv are the credentials Pi reads for its built-in providers.
@@ -253,11 +241,6 @@ func (p *PiHarness) Launch(opts LaunchOptions) error {
 		return fmt.Errorf("`pi` is not on PATH; install Pi (https://pi.dev) and try again")
 	}
 
-	effort, err := mapEffort(p.Name(), piEfforts, opts.Effort)
-	if err != nil {
-		return err
-	}
-
 	launchDir, err := DefaultLaunchDirPi()
 	if err != nil {
 		return fmt.Errorf("failed to find launch directory: %w", err)
@@ -288,9 +271,6 @@ func (p *PiHarness) Launch(opts LaunchOptions) error {
 		argv = append(argv, "--model", piProvider+"/"+opts.Model)
 	default:
 		argv = append(argv, "--provider", piProvider)
-	}
-	if effort != "" && !hasAnyFlag(opts.Args, piThinkingFlags) {
-		argv = append(argv, "--thinking", effort)
 	}
 	argv = append(argv, opts.Args...)
 

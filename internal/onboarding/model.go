@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
 	"github.com/requestyai/cli/internal/tui/theme"
@@ -15,7 +17,6 @@ import (
 )
 
 const (
-	pageWidth       = 64
 	dialogMinWidth  = 24
 	dialogMaxWidth  = 80
 	groupListHeight = 8
@@ -60,25 +61,32 @@ type savedMsg struct {
 
 // model owns the complete interactive onboarding program.
 type model struct {
-	ctx    context.Context
-	opts   Options
-	dialog dialogState
-	err    error
-	width  int
-	height int
-	done   *config.Config
+	ctx     context.Context
+	opts    Options
+	dialog  dialogState
+	err     error
+	width   int
+	height  int
+	done    *config.Config
+	initCmd tea.Cmd
 }
 
+// newModel returns the program with the sign-in dialog already open, so it
+// is the first screen; Init starts the browser sign-in behind it. The welcome
+// page is only shown when the sign-in is cancelled or fails.
 func newModel(ctx context.Context, opts Options) model {
-	return model{
+	m := model{
 		ctx:    ctx,
 		opts:   opts,
 		width:  defaultWidth,
 		height: defaultHeight,
 	}
+	m, m.initCmd = m.signIn()
+
+	return m
 }
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd { return m.initCmd }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch typedMsg := msg.(type) {
@@ -96,31 +104,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case savedMsg:
 		if typedMsg.err != nil {
-			return m.fail(typedMsg.err), nil
+			return m.fail(typedMsg.err)
 		}
 		m.done = &typedMsg.result.Config
 		return m, tea.Quit
 
 	case tea.KeyPressMsg:
-		switch typedMsg.String() {
-		case "ctrl+c":
+		if typedMsg.String() == "ctrl+c" {
 			return m, tea.Quit
-		case "q":
-			if !m.dialog.open {
-				return m, tea.Quit
-			}
-		case "esc":
-			if !m.dialog.open {
-				return m, tea.Quit
-			}
 		}
-
-		if m.dialog.open {
-			return m.updateDialog(typedMsg)
-		}
-		if typedMsg.String() == "enter" {
-			return m.signIn()
-		}
+		return m.updateDialog(typedMsg)
 	}
 
 	return m, nil
@@ -131,13 +124,13 @@ func (m model) updateDialog(msg tea.KeyPressMsg) (model, tea.Cmd) {
 	case dialogSigningIn:
 		if msg.String() == "esc" {
 			m.dialog.cancel()
-			m.dialog = dialogState{}
+			return m, tea.Quit
 		}
 	case dialogChooseGroup:
 		groups := m.dialog.session.groups
 		switch msg.String() {
 		case "esc":
-			m.dialog = dialogState{}
+			return m, tea.Quit
 		case "up", "k":
 			if m.dialog.groupCursor > 0 {
 				m.dialog.groupCursor--
@@ -183,11 +176,10 @@ func (m model) onSignedIn(msg signedInMsg) (model, tea.Cmd) {
 		return m, nil
 	}
 	if errors.Is(msg.err, context.Canceled) {
-		m.dialog = dialogState{}
-		return m, nil
+		return m, tea.Quit
 	}
 	if msg.err != nil {
-		return m.fail(msg.err), nil
+		return m.fail(msg.err)
 	}
 
 	m.dialog.session = msg.session
@@ -198,7 +190,7 @@ func (m model) onSignedIn(msg signedInMsg) (model, tea.Cmd) {
 		return m, nil
 	}
 	if err != nil {
-		return m.fail(err), nil
+		return m.fail(err)
 	}
 	return m.save(group)
 }
@@ -213,48 +205,16 @@ func (m model) save(group *client.Group) (model, tea.Cmd) {
 	}
 }
 
-func (m model) fail(err error) model {
-	m.dialog = dialogState{}
+// fail ends the program with err; Run reports it to the caller.
+func (m model) fail(err error) (model, tea.Cmd) {
 	m.err = err
-	return m
+	return m, tea.Quit
 }
 
 func (m model) View() tea.View {
-	view := tea.NewView(frame.Render(m.pageView()))
+	view := tea.NewView(frame.Render(m.dialogView()))
 	view.AltScreen = true
 	return view
-}
-
-func (m model) pageView() string {
-	if m.dialog.open {
-		return m.dialogView()
-	}
-
-	inner := max(min(m.width-4, pageWidth), dialogMinWidth)
-	wrap := lipgloss.NewStyle().Width(inner)
-	lines := []string{
-		theme.Heading.Render("Welcome to Requesty"),
-		wrap.Render(theme.Label.Render("One gateway for every model, in every tool you use, or app you build.")),
-		text.LineSeparator,
-		wrap.Render(theme.Body.Render(fmt.Sprintf(
-			"Sign in with your browser to get started. This creates an API key named %q in your Requesty account and saves it to %s.",
-			defaultKeyName(), config.DisplayPath()))),
-	}
-	if m.opts.Harness != "" {
-		lines = append(lines, wrap.Render(theme.Body.Render(m.opts.Harness+" starts as soon as the key is saved.")))
-	}
-	lines = append(lines,
-		text.LineSeparator,
-		wrap.Render(theme.Muted.Render("Working over SSH, or already have a key? Quit and run `requesty login --api-key <key>` instead.")),
-		text.LineSeparator,
-	)
-	if m.err != nil {
-		lines = append(lines, wrap.Render(theme.Bad.Render(m.err.Error())), text.LineSeparator)
-	}
-	lines = append(lines, text.RenderFooterHintList(inner, [2]string{"enter", "sign in"}, [2]string{"q/esc", "quit"}))
-
-	body := theme.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, body)
 }
 
 type dialogPage struct {
@@ -281,18 +241,29 @@ func (m model) dialogPage(inner int) dialogPage {
 	wrap := lipgloss.NewStyle().Width(inner)
 	switch m.dialog.step {
 	case dialogSigningIn:
-		body := []string{wrap.Render(theme.Body.Render("Waiting for you to finish signing in in your browser…"))}
+		body := []string{
+			wrap.Render(theme.Label.Render("One gateway for every model, in every tool you use, or app you build.")),
+			text.LineSeparator,
+			wrap.Render(theme.Body.Render("Waiting for you to finish signing in with your browser…")),
+		}
 		if m.dialog.authorizeURL != "" {
 			body = append(body,
 				text.LineSeparator,
 				wrap.Render(theme.Muted.Render("If it did not open, visit this address:")),
-				wrap.Render(theme.Accent.Render(m.dialog.authorizeURL)),
+				hyperlinkLines(m.dialog.authorizeURL, inner),
 			)
 		}
+		if m.opts.Harness != "" {
+			body = append(body, text.LineSeparator, wrap.Render(theme.Muted.Render(m.opts.Harness+" starts as soon as the key is saved.")))
+		}
+		body = append(body,
+			text.LineSeparator,
+			wrap.Render(theme.Muted.Render("Working over SSH, or already have a key? Quit and run `requesty login --api-key <key>` instead.")),
+		)
 		return dialogPage{
-			title: "Sign in with your browser",
+			title: "Welcome to Requesty",
 			body:  lipgloss.JoinVertical(lipgloss.Left, body...),
-			hints: [][2]string{{"esc", "cancel"}},
+			hints: [][2]string{{"esc", "quit"}},
 		}
 	case dialogChooseGroup:
 		return dialogPage{
@@ -309,6 +280,25 @@ func (m model) dialogPage(inner int) dialogPage {
 	default:
 		return dialogPage{}
 	}
+}
+
+// authorizeLinkID ties the lines of a wrapped sign-in URL together, so the
+// terminal highlights them as one link on hover.
+const authorizeLinkID = "id=requesty-authorize"
+
+// hyperlinkLines renders url wrapped to width as a clickable link. Each line
+// is its own OSC 8 link to the full url, opened and closed around the text
+// alone, so the link does not spill into padding or borders and terminals
+// that join links by id highlight every line together.
+func hyperlinkLines(url string, width int) string {
+	wrapped := lipgloss.NewStyle().Width(width).Render(url)
+	lines := strings.Split(wrapped, "\n")
+	for i, line := range lines {
+		line = strings.TrimRight(line, " ")
+		lines[i] = ansi.SetHyperlink(url, authorizeLinkID) + theme.Accent.Render(line) + ansi.ResetHyperlink()
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 func (m model) groupTable(inner int) table.Table {

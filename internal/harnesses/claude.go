@@ -139,15 +139,6 @@ func (c *ClaudeHarness) settingsPath() string {
 	return filepath.Join(c.configDir, "settings.json")
 }
 
-// claudeEfforts maps Launch effort levels onto Claude Code's --effort values.
-var claudeEfforts = map[string]string{
-	EffortLow:    "low",
-	EffortMedium: "medium",
-	EffortHigh:   "high",
-	EffortXHigh:  "xhigh",
-	EffortMax:    "max",
-}
-
 // claudeOverrideSettings are passed inline with --settings so they outrank
 // the user's own settings.json for this run only. Every alternative-provider
 // switch is blanked so a Bedrock or Vertex setup on the machine cannot route
@@ -189,11 +180,6 @@ func (c *ClaudeHarness) Launch(opts LaunchOptions) error {
 		return fmt.Errorf("`claude` is not on PATH; install Claude Code (https://code.claude.com/docs/en/setup) and try again")
 	}
 
-	effort, err := mapEffort(c.Name(), claudeEfforts, opts.Effort)
-	if err != nil {
-		return err
-	}
-
 	env := parseEnvironmentVariables(opts.Env)
 	env["ANTHROPIC_BASE_URL"] = c.config.RouterBaseURL
 	env["ANTHROPIC_API_KEY"] = c.config.APIKey
@@ -220,9 +206,6 @@ func (c *ClaudeHarness) Launch(opts LaunchOptions) error {
 			return err
 		}
 		argv = append(argv, "--settings", settings)
-	}
-	if effort != "" {
-		argv = append(argv, "--effort", effort)
 	}
 	argv = append(argv, opts.Args...)
 

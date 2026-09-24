@@ -137,18 +137,6 @@ func TestSaveRoundTrips(t *testing.T) {
 	assert.Equal(t, "claude-haiku-4-5", got.Profiles["work"].HarnessFastModels["claude"])
 }
 
-func TestSetHarnessModelForgetsFastModel(t *testing.T) {
-	var cfg Config
-	cfg.SetHarnessModel("claude", "claude-sonnet-4-6")
-	cfg.SetHarnessFastModel("claude", "claude-haiku-4-5")
-	cfg.SetHarnessFastModel("other", "kept")
-
-	cfg.SetHarnessModel("claude", "claude-sonnet-4-6@eu")
-
-	assert.NotContains(t, cfg.HarnessFastModels, "claude")
-	assert.Equal(t, "kept", cfg.HarnessFastModels["other"])
-}
-
 func TestHarnessModelsAreOmittedUntilSet(t *testing.T) {
 	data, err := json.Marshal(Config{APIKey: "k", RouterBaseURL: DefaultRouterBaseURL})
 

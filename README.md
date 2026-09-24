@@ -46,33 +46,34 @@ a new terminal, or run the `source` command it prints, then run `requesty`.
 **Sign in with your browser**
 
 The first time you run `requesty` or a harness command such as `requesty claude` on a machine without a profile,
-the CLI opens with a welcome page that says what is about to happen. Press enter and it signs you in
-to Requesty in your browser; once you approve, it creates an API key in your account, named after
-this machine (`Requesty CLI (my-laptop)`), and saves it as a [profile](#profiles) in
-`~/.requesty/config.json`. The app then carries on to its dashboard, or the harness you asked for
-starts. Every later run reuses that profile. The key shows up on the
+the CLI opens your browser to sign in to Requesty straight away; once you approve, it creates an
+API key in your account, named after this machine (`Requesty CLI (my-laptop)`), and saves it as a
+[profile](#profiles) in `~/.requesty/config.json`. The app then carries on to its dashboard, or
+the harness you asked for starts. Every later run reuses that profile. The key shows up on the
 [API keys page](https://app.requesty.ai/api-keys) like any other, and can be revoked there.
 
 ```text
 ╭──────────────────────────────────────────────────────────────────╮
 │ Welcome to Requesty                                              │
+│                                                                  │
 │ One gateway for every model, in every tool you use, or app you   │
 │ build.                                                           │
 │                                                                  │
-│ Sign in with your browser to get started. This creates an API    │
-│ key named "Requesty CLI (my-laptop)" in your Requesty account    │
-│ and saves it to /home/you/.requesty/config.json.                 │
+│ Waiting for you to finish signing in with your browser…          │
+│                                                                  │
+│ If it did not open, visit this address:                          │
+│ https://app.requesty.ai/oauth/authorize?...                      │
+│                                                                  │
 │ Claude Code starts as soon as the key is saved.                  │
 │                                                                  │
 │ Working over SSH, or already have a key? Quit and run `requesty  │
 │ login --api-key <key>` instead.                                  │
 │                                                                  │
-│ enter sign in · q/esc quit                                   dev │
+│ esc quit                                                         │
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
-While the browser is open a dialog shows the sign-in address, for when the browser did not open on
-its own; `esc` cancels. The key is created in your group. If you belong to several groups a dialog
+`esc` quits; run the command again to retry. The key is created in your group. If you belong to several groups a dialog
 asks which one; if you belong to none it is a personal key. Organizations that require keys to live
 in a group will say so, in which case ask an admin to add you to one. The profile is named
 `default`; pass `--profile <name>` to choose another name.
@@ -119,14 +120,15 @@ requesty claude --profile eu                       # a named profile, with its o
 requesty claude --model anthropic/claude-opus-4-1  # this model, just for this run
 requesty claude --choose-model                     # pick again and remember the new answer
 requesty claude --choose-fast-model                # pick what background work runs on
-requesty codex --reasoning-effort high -- --full-auto
-requesty opencode --model gpt-5.5 -- run "explain this repo"
-requesty pi --reasoning-effort medium
-requesty hermes -- chat -q "hello"
+requesty codex --full-auto                         # everything else goes to the harness untouched
+requesty claude --effort high                      # so its own flags work as usual
+requesty opencode --model gpt-5.5 run "explain this repo"
+requesty pi --thinking off
+requesty hermes chat -q "hello"
 ```
 
-Profile precedence is `--profile <name>`, then `REQUESTY_PROFILE`, then the current profile set
-with `requesty profiles use`. For a harness command, put `--profile` after the harness name and
+`--profile <name>` picks the profile for a run; without it, the current profile set with
+`requesty profiles use` is used. For a harness command, put `--profile` after the harness name and
 before the first argument that is passed through to the harness.
 
 Each harness is pointed at Requesty in the way it allows without touching its files:
@@ -147,9 +149,10 @@ Each harness is pointed at Requesty in the way it allows without touching its fi
   Hermes loads `~/.hermes/.env` over the environment, so the CLI warns when a value there would
   replace one of its own.
 
-Reasoning effort (`--reasoning-effort minimal|low|medium|high|xhigh|max`) maps onto each harness's
-own flag; levels a harness does not support are rejected before it starts. Flags you pass through
-for the model, provider or effort take precedence over the CLI's.
+Anything the harness itself can be told, such as reasoning effort, is left to the harness's own
+flags: `claude --effort high`, `codex -c model_reasoning_effort=high`, `opencode --variant high`,
+`pi --thinking high`, `hermes --reasoning high`. A model or provider flag you pass through takes
+precedence over the CLI's.
 
 ## Profiles
 
@@ -167,8 +170,7 @@ requesty profiles remove personal                       # forget a profile (the 
 ```
 
 `requesty login` creates the `default` profile unless you pass `--profile`. The first profile
-becomes current. Every command accepts `--profile <name>`, and `REQUESTY_PROFILE` does the same
-for a whole shell.
+becomes current. Every command accepts `--profile <name>`.
 
 Harnesses configured from the dashboard stay pinned to the profile used during configuration.
 Claude Code stores that profile's key in its settings. Codex fetches the key through

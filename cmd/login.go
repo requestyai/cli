@@ -24,17 +24,11 @@ func newLoginCommand(env *environment) *cobra.Command {
 		Use:   "login [--group <name>] [--profile <name>] [--api-key <key>] [--router-url <url>] [--force]",
 		Short: "Sign in to Requesty and save a profile on this machine",
 		Long: "Sign in to Requesty in your browser and save a profile on this machine.\n\n" +
-			"Once you approve in the browser, the CLI creates an API key in your Requesty\n" +
-			"account and saves it as a profile in " + config.DisplayPath() + ", where\n" +
-			"`requesty claude`, `requesty codex` and the terminal app pick it up. The key is\n" +
-			"named after this machine so you can recognise it on " + onboarding.APIKeysURL + ".\n\n" +
-			"The key goes in your group. With several groups you are asked which, or you can\n" +
-			"name one with --group. Without any group the key is a personal one. The profile\n" +
-			"is called `" + defaultProfileName + "` unless you pass --profile; the first one saved becomes current.\n\n" +
-			"The browser hands the sign-in back to this machine on 127.0.0.1, which does not\n" +
-			"work over SSH. There, pass --api-key with a key from " + onboarding.APIKeysURL + "\n" +
-			"instead; it is checked against the gateway and saved.\n\n" +
-			"An existing profile is left alone; pass --force to replace its key.",
+			"The CLI creates an API key in your account, named after this machine, and saves\n" +
+			"it as the `" + defaultProfileName + "` profile in " + config.DisplayPath() + ". Harness commands and\n" +
+			"the terminal app run with it.\n\n" +
+			"The browser hands the sign-in back on 127.0.0.1, which does not work over SSH;\n" +
+			"there, pass --api-key with a key from " + onboarding.APIKeysURL + " instead.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			groupID, _ := cmd.Flags().GetString(loginGroupFlag)
@@ -42,7 +36,7 @@ func newLoginCommand(env *environment) *cobra.Command {
 			routerURL, _ := cmd.Flags().GetString(loginRouterURLFlag)
 			force, _ := cmd.Flags().GetBool(loginForceFlag)
 
-			name := requestedProfile(cmd)
+			name, _ := cmd.Flags().GetString(profileFlag)
 			if name == "" {
 				name = defaultProfileName
 			}

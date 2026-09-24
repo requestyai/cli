@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/requestyai/cli/internal/config"
 	"github.com/requestyai/cli/internal/onboarding"
@@ -16,8 +15,8 @@ func newProfilesCommand(env *environment) *cobra.Command {
 		Short:   "Manage the profiles saved on this machine",
 		Long: "Manage the profiles saved in " + config.DisplayPath() + ".\n\n" +
 			"A profile is one sign-in: an API key and the router it goes to. `requesty login`\n" +
-			"creates them; pick one for a run with --" + profileFlag + " or " + profileEnv + ", or make it\n" +
-			"current with `requesty profiles use`.",
+			"creates them; pick one for a run with --" + profileFlag + ", or make it current with\n" +
+			"`requesty profiles use`.",
 	}
 
 	cmd.PersistentFlags().Bool(jsonFlag, false, "print JSON instead of a table")
@@ -81,7 +80,7 @@ func newProfilesUseCommand(env *environment) *cobra.Command {
 	return &cobra.Command{
 		Use:   "use <name>",
 		Short: "Make a profile the current one",
-		Long:  "Make a profile the one used when none is named with --" + profileFlag + " or " + profileEnv + ".",
+		Long:  "Make a profile the one used when none is named with --" + profileFlag + ".",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -120,14 +119,4 @@ func newProfilesRemoveCommand(env *environment) *cobra.Command {
 			return err
 		},
 	}
-}
-
-// requestedProfile is the profile the user named for this run: the flag,
-// else the environment variable, else empty for whatever the config says.
-func requestedProfile(cmd *cobra.Command) string {
-	if flag := cmd.Flags().Lookup(profileFlag); flag != nil && flag.Changed {
-		return flag.Value.String()
-	}
-
-	return os.Getenv(profileEnv)
 }

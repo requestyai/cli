@@ -26,7 +26,7 @@ func newRootCommand(env *environment) *cobra.Command {
 			"Run with no arguments for the terminal app that configures harnesses and shows\n" +
 			"what you are spending. The subcommands manage your organization instead.\n\n" +
 			"Every command runs as one saved profile: an API key and its router. Name one\n" +
-			"with --" + profileFlag + " or " + profileEnv + "; otherwise the current profile is used.",
+			"with --" + profileFlag + "; otherwise the current profile is used.",
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -43,7 +43,7 @@ func newRootCommand(env *environment) *cobra.Command {
 			return nil
 		},
 	}
-	root.PersistentFlags().String(profileFlag, "", "saved profile to run as (also "+profileEnv+")")
+	root.PersistentFlags().String(profileFlag, "", "saved profile to run as")
 
 	root.AddCommand(
 		newLoginCommand(env),

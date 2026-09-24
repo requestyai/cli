@@ -3,7 +3,7 @@ package onboarding
 import (
 	"context"
 	"errors"
-	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -44,23 +44,19 @@ func view(m model) string {
 	return ansi.Strip(m.View().Content)
 }
 
-func TestWelcomeExplainsOnboarding(t *testing.T) {
-	out := view(newModel(context.Background(), Options{Harness: "Claude Code"}))
-
-	assert.Contains(t, out, "Welcome to Requesty")
-	assert.Contains(t, out, fmt.Sprintf("%q", defaultKeyName()))
-	assert.Contains(t, out, "Claude Code starts as soon as the key is saved")
-	assert.Contains(t, out, "--api-key <key>")
-}
-
-func TestEnterOpensSigningInDialog(t *testing.T) {
-	m, cmd := update(newModel(context.Background(), Options{}), key("enter"))
+func TestSignInStartsImmediately(t *testing.T) {
+	m := newModel(context.Background(), Options{Harness: "Claude Code"})
 
 	assert.True(t, m.dialog.open)
 	assert.Equal(t, dialogSigningIn, m.dialog.step)
 	assert.NotNil(t, m.dialog.cancel)
-	assert.NotNil(t, cmd)
-	assert.Contains(t, view(m), "Waiting for you to finish signing in")
+	assert.NotNil(t, m.Init(), "Init hands the runtime the sign-in")
+	out := view(m)
+	assert.Contains(t, out, "Welcome to Requesty")
+	assert.Contains(t, out, "One gateway for every model")
+	assert.Contains(t, out, "Waiting for you to finish signing in")
+	assert.Contains(t, out, "Claude Code starts as soon as the key is saved")
+	assert.Contains(t, out, "--api-key <key>")
 }
 
 func TestSigningInDialogShowsAuthorizeURL(t *testing.T) {
@@ -72,27 +68,46 @@ func TestSigningInDialogShowsAuthorizeURL(t *testing.T) {
 	assert.Contains(t, view(m), "https://api.example/authorize")
 }
 
-func TestEscapeCancelsAndIgnoresLateSignIn(t *testing.T) {
+func TestAuthorizeURLIsOneHyperlinkWhenWrapped(t *testing.T) {
+	m := signingIn()
+	long := "https://api.example/authorize?" + strings.Repeat("x=1&", 40)
+
+	m, _ = update(m, authorizeURLMsg{url: long})
+	raw := m.View().Content
+
+	assert.Contains(t, ansi.Strip(raw), long[:20])
+	open := ansi.SetHyperlink(long, authorizeLinkID)
+	opens := strings.Count(raw, open)
+	assert.Greater(t, opens, 1, "each wrapped line is its own link to the full URL, sharing an id")
+	assert.Equal(t, opens, strings.Count(raw, ansi.ResetHyperlink()), "every line closes its link")
+	for _, segment := range strings.Split(raw, open)[1:] {
+		linked, _, found := strings.Cut(segment, ansi.ResetHyperlink())
+		require.True(t, found)
+		assert.NotContains(t, linked, "\n", "a link never runs past its line into padding or borders")
+	}
+}
+
+func TestEscapeCancelsAndQuits(t *testing.T) {
 	m := signingIn()
 	cancelled := false
 	m.dialog.cancel = func() { cancelled = true }
 
-	m, _ = update(m, key("esc"))
-	assert.True(t, cancelled)
-	assert.False(t, m.dialog.open)
+	m, cmd := update(m, key("esc"))
 
-	m, cmd := update(m, signedInMsg{session: &session{}})
-	assert.False(t, m.dialog.open)
-	assert.Nil(t, cmd)
+	assert.True(t, cancelled)
+	assert.NotNil(t, cmd, "quits")
+	assert.Nil(t, m.done)
+	assert.NoError(t, m.err, "a cancel is not an error")
 }
 
-func TestSignInFailureReturnsToWelcome(t *testing.T) {
+func TestSignInFailureQuitsWithError(t *testing.T) {
 	m := signingIn()
 
-	m, _ = update(m, signedInMsg{err: errors.New("access_denied")})
+	m, cmd := update(m, signedInMsg{err: errors.New("access_denied")})
 
-	assert.False(t, m.dialog.open)
-	assert.Contains(t, view(m), "access_denied")
+	assert.NotNil(t, cmd, "quits")
+	assert.EqualError(t, m.err, "access_denied")
+	assert.Nil(t, m.done)
 }
 
 func TestSeveralGroupsOpenPickerAndMoveCursor(t *testing.T) {

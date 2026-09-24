@@ -194,15 +194,6 @@ func (c *CodexHarness) authArgs() []string {
 	return []string{"auth", "token", "--profile", c.config.Name}
 }
 
-// codexEfforts maps Launch effort levels onto Codex's model_reasoning_effort.
-var codexEfforts = map[string]string{
-	EffortMinimal: "minimal",
-	EffortLow:     "low",
-	EffortMedium:  "medium",
-	EffortHigh:    "high",
-	EffortXHigh:   "xhigh",
-}
-
 // Launch replaces this process with Codex pointed at Requesty using
 // `-c key=value` overrides, which outrank ~/.codex/config.toml for this run
 // only. Nothing is written to disk; the key is fetched on demand through
@@ -214,11 +205,6 @@ func (c *CodexHarness) Launch(opts LaunchOptions) error {
 	}
 	if !status.Executable {
 		return fmt.Errorf("`codex` is not on PATH; install Codex (https://developers.openai.com/codex/cli) and try again")
-	}
-
-	effort, err := mapEffort(c.Name(), codexEfforts, opts.Effort)
-	if err != nil {
-		return err
 	}
 
 	provider := "model_providers." + codexModelProvider
@@ -234,9 +220,6 @@ func (c *CodexHarness) Launch(opts LaunchOptions) error {
 	}
 	if opts.Model != "" {
 		argv = append(argv, "-m", opts.Model)
-	}
-	if effort != "" {
-		argv = append(argv, "-c", "model_reasoning_effort="+tomlString(effort))
 	}
 	argv = append(argv, opts.Args...)
 

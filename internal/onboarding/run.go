@@ -25,7 +25,13 @@ func Run(ctx context.Context, opts Options) (config.Config, error) {
 	}
 
 	finished, ok := final.(model)
-	if !ok || finished.done == nil {
+	if !ok {
+		return config.Config{}, ErrCancelled
+	}
+	if finished.err != nil {
+		return config.Config{}, finished.err
+	}
+	if finished.done == nil {
 		return config.Config{}, ErrCancelled
 	}
 	return *finished.done, nil
