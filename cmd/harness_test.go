@@ -18,7 +18,7 @@ import (
 func TestHarnessCommandsAreRegistered(t *testing.T) {
 	command := newRootCommand(&environment{})
 
-	for _, name := range []string{"claude", "codex"} {
+	for _, name := range []string{"claude", "codex", "opencode", "pi", "hermes"} {
 		sub, _, err := command.Find([]string{name})
 		require.NoError(t, err)
 		assert.Equal(t, name, sub.Name())

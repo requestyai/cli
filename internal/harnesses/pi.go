@@ -1,13 +1,19 @@
 package harnesses
 
 import (
+	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
+	"time"
 
+	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
 )
 
@@ -74,8 +80,9 @@ func (p *PiHarness) Description() []string {
 func (p *PiHarness) Status() (Status, error) {
 	status := Status{}
 
-	if _, err := exec.LookPath("pi"); err == nil {
+	if path, err := exec.LookPath("pi"); err == nil {
 		status.Executable = true
+		status.ExecutablePath = path
 	} else if !errors.Is(err, exec.ErrNotFound) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
@@ -125,8 +132,272 @@ func (p *PiHarness) Status() (Status, error) {
 	return status, nil
 }
 
-func (p *PiHarness) Launch(LaunchOptions) error {
-	return launchNotImplemented(p.Name())
+// piExtension registers Requesty as a Pi provider for one run. It is written
+// out before every launch so an upgraded CLI always ships its current copy.
+//
+//go:embed pi/requesty.ts
+var piExtension []byte
+
+const (
+	piExtensionFile = "requesty.ts"
+	piCatalogFile   = "catalog.json"
+
+	// piCatalogTimeout bounds the model list refresh so a slow network
+	// cannot hold up the launch for long.
+	piCatalogTimeout = 5 * time.Second
+
+	// piCatalogContextWindow and piCatalogMaxTokens stand in when the model
+	// list does not say.
+	piCatalogContextWindow = 200_000
+	piCatalogMaxTokens     = 8_192
+)
+
+// piCatalog is what the extension reads: the models the profile can route
+// to, in the shape of Pi's ProviderModelConfig.
+type piCatalog struct {
+	Models []piCatalogModel `json:"models"`
+}
+
+type piCatalogModel struct {
+	ID            string        `json:"id"`
+	Name          string        `json:"name"`
+	Reasoning     bool          `json:"reasoning"`
+	Input         []string      `json:"input"`
+	Cost          piCatalogCost `json:"cost"`
+	ContextWindow int           `json:"contextWindow"`
+	MaxTokens     int           `json:"maxTokens"`
+}
+
+// piCatalogCost is in dollars per million tokens, as Pi expects.
+type piCatalogCost struct {
+	Input      float64 `json:"input"`
+	Output     float64 `json:"output"`
+	CacheRead  float64 `json:"cacheRead"`
+	CacheWrite float64 `json:"cacheWrite"`
+}
+
+// piEfforts maps Launch effort levels onto Pi's --thinking values, which
+// take the level name as is.
+var piEfforts = map[string]string{
+	EffortMinimal: "minimal",
+	EffortLow:     "low",
+	EffortMedium:  "medium",
+	EffortHigh:    "high",
+	EffortXHigh:   "xhigh",
+	EffortMax:     "max",
+}
+
+// piProviderFlags, piModelFlags and piThinkingFlags are the Pi flags that,
+// when the user passes them, mean we leave the corresponding choice alone.
+var (
+	piProviderFlags = []string{"--provider"}
+	piModelFlags    = []string{"--model"}
+	piThinkingFlags = []string{"--thinking"}
+)
+
+// piNeutralizedEnv are the credentials Pi reads for its built-in providers.
+// They are dropped from the launched process so every model Pi offers goes
+// through Requesty rather than straight to a vendor.
+var piNeutralizedEnv = []string{
+	"AI_GATEWAY_API_KEY",
+	"ANT_LING_API_KEY",
+	"ANTHROPIC_API_KEY",
+	"ANTHROPIC_AUTH_TOKEN",
+	"ANTHROPIC_OAUTH_TOKEN",
+	"AWS_BEARER_TOKEN_BEDROCK",
+	"AZURE_OPENAI_API_KEY",
+	"BASETEN_API_KEY",
+	"CEREBRAS_API_KEY",
+	"CLOUDFLARE_API_KEY",
+	"DEEPSEEK_API_KEY",
+	"FIREWORKS_API_KEY",
+	"GEMINI_API_KEY",
+	"GROQ_API_KEY",
+	"KIMI_API_KEY",
+	"MINIMAX_API_KEY",
+	"MISTRAL_API_KEY",
+	"MOONSHOT_API_KEY",
+	"NVIDIA_API_KEY",
+	"OPENAI_API_KEY",
+	"OPENCODE_API_KEY",
+	"OPENROUTER_API_KEY",
+	"QWEN_TOKEN_PLAN_API_KEY",
+	"QWEN_TOKEN_PLAN_CN_API_KEY",
+	"TOGETHER_API_KEY",
+	"XAI_API_KEY",
+	"XIAOMI_API_KEY",
+	"XIAOMI_TOKEN_PLAN_AMS_API_KEY",
+	"XIAOMI_TOKEN_PLAN_CN_API_KEY",
+	"XIAOMI_TOKEN_PLAN_SGP_API_KEY",
+	"ZAI_API_KEY",
+	"ZAI_CODING_CN_API_KEY",
+}
+
+// DefaultLaunchDirPi is where `requesty pi` keeps the extension and model
+// catalog it hands to Pi: under our own directory, not Pi's.
+func DefaultLaunchDirPi() (string, error) {
+	return requestyDirInHome("pi")
+}
+
+// Launch replaces this process with Pi pointed at Requesty. Pi has no flag
+// or variable for a custom provider, so a small extension of ours, loaded
+// with --extension, registers Requesty with the models the profile can use.
+// The extension and its model catalog live under ~/.requesty/pi; Pi's own
+// configuration is not touched.
+func (p *PiHarness) Launch(opts LaunchOptions) error {
+	status, err := p.Status()
+	if err != nil {
+		return fmt.Errorf("failed to check %s: %w", p.Name(), err)
+	}
+	if !status.Executable {
+		return fmt.Errorf("`pi` is not on PATH; install Pi (https://pi.dev) and try again")
+	}
+
+	effort, err := mapEffort(p.Name(), piEfforts, opts.Effort)
+	if err != nil {
+		return err
+	}
+
+	launchDir, err := DefaultLaunchDirPi()
+	if err != nil {
+		return fmt.Errorf("failed to find launch directory: %w", err)
+	}
+	extensionPath := filepath.Join(launchDir, piExtensionFile)
+	catalogPath := filepath.Join(launchDir, piCatalogFile)
+
+	if err := writeFile(extensionPath, piExtension, 0o600); err != nil {
+		return fmt.Errorf("failed to write Pi extension: %w", err)
+	}
+	if err := p.writeCatalog(catalogPath, opts.Model); err != nil {
+		return fmt.Errorf("failed to write Pi model catalog: %w", err)
+	}
+
+	env := parseEnvironmentVariables(opts.Env)
+	for _, key := range piNeutralizedEnv {
+		delete(env, key)
+	}
+	env["REQUESTY_API_KEY"] = p.config.APIKey
+	env["REQUESTY_BASE_URL"] = p.config.RouterBaseURL
+	env["REQUESTY_PI_CATALOG"] = catalogPath
+
+	argv := []string{"pi", "--extension", extensionPath}
+	switch {
+	case hasAnyFlag(opts.Args, piModelFlags), hasAnyFlag(opts.Args, piProviderFlags):
+		// The user has chosen for themselves.
+	case opts.Model != "":
+		argv = append(argv, "--model", piProvider+"/"+opts.Model)
+	default:
+		argv = append(argv, "--provider", piProvider)
+	}
+	if effort != "" && !hasAnyFlag(opts.Args, piThinkingFlags) {
+		argv = append(argv, "--thinking", effort)
+	}
+	argv = append(argv, opts.Args...)
+
+	if err := execProcess(status.ExecutablePath, argv, formatEnvironmentVariables(env)); err != nil {
+		return fmt.Errorf("failed to launch pi: %w", err)
+	}
+
+	return nil
+}
+
+// writeCatalog refreshes the model catalog from the profile's account. When
+// that fails, such as offline, the previous catalog is kept. Either way the
+// launched model is listed, since Pi only accepts models it knows about.
+func (p *PiHarness) writeCatalog(path, model string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), piCatalogTimeout)
+	defer cancel()
+
+	catalog, err := p.fetchCatalog(ctx)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "Warning: could not refresh the Requesty model list for Pi (%v); using the previous list.\n", err)
+		catalog = readPiCatalog(path)
+	}
+
+	if model != "" && !slices.ContainsFunc(catalog.Models, func(m piCatalogModel) bool { return m.ID == model }) {
+		catalog.Models = append(catalog.Models, piCatalogModel{
+			ID:            model,
+			Name:          model,
+			Reasoning:     true,
+			Input:         []string{"text", "image"},
+			ContextWindow: piCatalogContextWindow,
+			MaxTokens:     piCatalogMaxTokens,
+		})
+	}
+
+	data, err := json.MarshalIndent(catalog, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode catalog: %w", err)
+	}
+
+	return writeFile(path, data, 0o600)
+}
+
+// fetchCatalog lists the profile's models and managed policies. Policies
+// are optional: an account without any still gets its models.
+func (p *PiHarness) fetchCatalog(ctx context.Context) (piCatalog, error) {
+	apiClient := client.New(p.config)
+
+	models, err := apiClient.Models(ctx)
+	if err != nil {
+		return piCatalog{}, err
+	}
+	policies, _ := apiClient.ManagedPolicies(ctx)
+
+	listed := slices.Concat(policies, models)
+	slices.SortFunc(listed, func(a, b client.Model) int { return strings.Compare(a.ID, b.ID) })
+
+	catalog := piCatalog{Models: make([]piCatalogModel, 0, len(listed))}
+	for _, model := range listed {
+		if model.ID == "" || slices.ContainsFunc(catalog.Models, func(m piCatalogModel) bool { return m.ID == model.ID }) {
+			continue
+		}
+		catalog.Models = append(catalog.Models, piCatalogModelFrom(model))
+	}
+
+	return catalog, nil
+}
+
+// piCatalogModelFrom describes a Requesty model to Pi. Prices arrive per
+// token and leave per million; capacities the list omits get defaults.
+func piCatalogModelFrom(model client.Model) piCatalogModel {
+	entry := piCatalogModel{
+		ID:        model.ID,
+		Name:      model.ID,
+		Reasoning: true,
+		Input:     []string{"text", "image"},
+		Cost: piCatalogCost{
+			Input:      model.InputPrice * 1_000_000,
+			Output:     model.OutputPrice * 1_000_000,
+			CacheRead:  model.CacheReadPrice * 1_000_000,
+			CacheWrite: model.CacheWritePrice * 1_000_000,
+		},
+		ContextWindow: model.ContextWindow,
+		MaxTokens:     model.MaxOutputTokens,
+	}
+	if entry.ContextWindow <= 0 {
+		entry.ContextWindow = piCatalogContextWindow
+	}
+	if entry.MaxTokens <= 0 {
+		entry.MaxTokens = piCatalogMaxTokens
+	}
+
+	return entry
+}
+
+// readPiCatalog returns the catalog at path, or an empty one when there is
+// none or it cannot be read.
+func readPiCatalog(path string) piCatalog {
+	var catalog piCatalog
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return catalog
+	}
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		return piCatalog{}
+	}
+
+	return catalog
 }
 
 func (p *PiHarness) Configure(opts ConfigureOptions) error {

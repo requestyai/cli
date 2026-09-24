@@ -1,12 +1,14 @@
 package harnesses
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/requestyai/cli/internal/config"
 )
@@ -63,8 +65,9 @@ func (o *OpenCodeHarness) Description() []string {
 func (o *OpenCodeHarness) Status() (Status, error) {
 	status := Status{}
 
-	if _, err := exec.LookPath("opencode"); err == nil {
+	if path, err := exec.LookPath("opencode"); err == nil {
 		status.Executable = true
+		status.ExecutablePath = path
 	} else if !errors.Is(err, exec.ErrNotFound) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
@@ -97,8 +100,156 @@ func (o *OpenCodeHarness) Status() (Status, error) {
 	return status, nil
 }
 
-func (o *OpenCodeHarness) Launch(LaunchOptions) error {
-	return launchNotImplemented(o.Name())
+// openCodeEfforts maps Launch effort levels onto OpenCode's --variant values,
+// which take the level name as is.
+var openCodeEfforts = map[string]string{
+	EffortMinimal: "minimal",
+	EffortLow:     "low",
+	EffortMedium:  "medium",
+	EffortHigh:    "high",
+	EffortXHigh:   "xhigh",
+	EffortMax:     "max",
+}
+
+// openCodeModelFlags and openCodeVariantFlags are the OpenCode flags that,
+// when the user passes them, mean we leave the corresponding choice alone.
+var (
+	openCodeModelFlags   = []string{"-m", "--model"}
+	openCodeVariantFlags = []string{"--variant"}
+)
+
+// Launch replaces this process with OpenCode pointed at Requesty. OpenCode
+// knows Requesty as a built-in provider that switches on when
+// REQUESTY_API_KEY is set; an inline OPENCODE_CONFIG_CONTENT document, which
+// outranks opencode.json for this run only, pins the base URL and key to
+// this profile. Nothing is written to disk.
+func (o *OpenCodeHarness) Launch(opts LaunchOptions) error {
+	status, err := o.Status()
+	if err != nil {
+		return fmt.Errorf("failed to check %s: %w", o.Name(), err)
+	}
+	if !status.Executable {
+		return fmt.Errorf("`opencode` is not on PATH; install OpenCode (https://opencode.ai/docs) and try again")
+	}
+
+	effort, err := mapEffort(o.Name(), openCodeEfforts, opts.Effort)
+	if err != nil {
+		return err
+	}
+
+	env := parseEnvironmentVariables(opts.Env)
+	env["REQUESTY_API_KEY"] = o.config.APIKey
+	content, err := o.inlineConfig(env["OPENCODE_CONFIG_CONTENT"], opts.Model)
+	if err != nil {
+		return err
+	}
+	env["OPENCODE_CONFIG_CONTENT"] = content
+
+	if warning, conflict := o.credentialConflict(env); conflict {
+		_, _ = fmt.Fprintln(os.Stderr, warning)
+	}
+
+	argv := []string{"opencode"}
+	if opts.Model != "" && !hasAnyFlag(opts.Args, openCodeModelFlags) {
+		argv = append(argv, "-m", o.modelID(opts.Model))
+	}
+	if effort != "" && !hasAnyFlag(opts.Args, openCodeVariantFlags) {
+		argv = append(argv, "--variant", effort)
+	}
+	argv = append(argv, opts.Args...)
+
+	if err := execProcess(status.ExecutablePath, argv, formatEnvironmentVariables(env)); err != nil {
+		return fmt.Errorf("failed to launch opencode: %w", err)
+	}
+
+	return nil
+}
+
+// inlineConfig is the OPENCODE_CONFIG_CONTENT document for this run: the
+// user's own, if they set one, with our provider merged in. The key is
+// referenced by environment variable so it stays out of the document itself.
+// The launched model is declared under the provider so ids OpenCode's
+// catalog does not list, such as managed policies, still resolve.
+func (o *OpenCodeHarness) inlineConfig(existing, model string) (string, error) {
+	settings := make(map[string]any)
+	if strings.TrimSpace(existing) != "" {
+		decoder := json.NewDecoder(bytes.NewReader([]byte(existing)))
+		decoder.UseNumber()
+		if err := decoder.Decode(&settings); err != nil {
+			return "", fmt.Errorf("OPENCODE_CONFIG_CONTENT is not valid JSON, so Requesty cannot add its provider to it; fix or unset it and try again: %w", err)
+		}
+	}
+
+	provider := map[string]any{
+		"options": map[string]any{
+			"baseURL": o.baseURL(),
+			"apiKey":  "{env:REQUESTY_API_KEY}",
+			"headers": map[string]any{
+				"X-Title": "OpenCode",
+			},
+		},
+	}
+	if model != "" {
+		provider["models"] = map[string]any{model: map[string]any{}}
+	}
+
+	if err := mergePatch(settings, map[string]any{"provider": map[string]any{openCodeProvider: provider}}, ""); err != nil {
+		return "", fmt.Errorf("OPENCODE_CONFIG_CONTENT cannot take a Requesty provider: %w", err)
+	}
+
+	data, err := json.Marshal(settings)
+	if err != nil {
+		return "", fmt.Errorf("failed to encode inline config: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// credentialConflict reports a Requesty key stored by `opencode auth login`
+// that differs from this profile's, since a stored credential can win over
+// the one we inject and then fail authentication.
+func (o *OpenCodeHarness) credentialConflict(env map[string]string) (string, bool) {
+	authPath := openCodeAuthPath(env)
+	if authPath == "" {
+		return "", false
+	}
+
+	data, err := os.ReadFile(authPath)
+	if err != nil {
+		return "", false
+	}
+
+	var auth map[string]struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(data, &auth); err != nil {
+		return "", false
+	}
+
+	stored, ok := auth[openCodeProvider]
+	if !ok || stored.Key == "" || stored.Key == o.config.APIKey {
+		return "", false
+	}
+
+	return fmt.Sprintf("Warning: OpenCode has a Requesty credential stored at %s that differs from this profile's key. If requests fail to authenticate, remove it with `opencode auth logout` and try again.", authPath), true
+}
+
+// openCodeAuthPath is where `opencode auth login` keeps credentials:
+// $XDG_DATA_HOME/opencode/auth.json, defaulting to ~/.local/share.
+func openCodeAuthPath(env map[string]string) string {
+	dataHome := strings.TrimSpace(env["XDG_DATA_HOME"])
+	if dataHome == "" {
+		home := env["HOME"]
+		if home == "" {
+			var err error
+			if home, err = os.UserHomeDir(); err != nil {
+				return ""
+			}
+		}
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+
+	return filepath.Join(dataHome, "opencode", "auth.json")
 }
 
 func (o *OpenCodeHarness) Configure(opts ConfigureOptions) error {

@@ -45,7 +45,7 @@ a new terminal, or run the `source` command it prints, then run `requesty`.
 
 **Sign in with your browser**
 
-The first time you run `requesty`, `requesty claude` or `requesty codex` on a machine without a profile,
+The first time you run `requesty` or a harness command such as `requesty claude` on a machine without a profile,
 the CLI opens with a welcome page that says what is about to happen. Press enter and it signs you in
 to Requesty in your browser; once you approve, it creates an API key in your account, named after
 this machine (`Requesty CLI (my-laptop)`), and saves it as a [profile](#profiles) in
@@ -94,9 +94,9 @@ unless you pass `--profile`.
 
 ## Launching a harness
 
-`requesty claude` and `requesty codex` start the harness with its traffic routed through Requesty
-for that run only; nothing on disk is changed. The current profile is used unless you select
-another.
+`requesty claude`, `requesty codex`, `requesty opencode`, `requesty pi` and `requesty hermes`
+start the harness with its traffic routed through Requesty for that run only; the harness's own
+configuration is not changed. The current profile is used unless you select another.
 
 The first time you launch a harness from a profile, the CLI settles which model it should use and
 remembers the answer in the profile. When the key can route to the harness's recommended default
@@ -120,11 +120,36 @@ requesty claude --model anthropic/claude-opus-4-1  # this model, just for this r
 requesty claude --choose-model                     # pick again and remember the new answer
 requesty claude --choose-fast-model                # pick what background work runs on
 requesty codex --reasoning-effort high -- --full-auto
+requesty opencode --model gpt-5.5 -- run "explain this repo"
+requesty pi --reasoning-effort medium
+requesty hermes -- chat -q "hello"
 ```
 
 Profile precedence is `--profile <name>`, then `REQUESTY_PROFILE`, then the current profile set
 with `requesty profiles use`. For a harness command, put `--profile` after the harness name and
 before the first argument that is passed through to the harness.
+
+Each harness is pointed at Requesty in the way it allows without touching its files:
+
+- **Claude Code** gets `ANTHROPIC_BASE_URL` and the key through the environment plus a
+  `--settings` document for this run.
+- **Codex** gets a `requesty` model provider through `-c` overrides.
+- **OpenCode** knows Requesty as a built-in provider that switches on when `REQUESTY_API_KEY` is
+  set; an `OPENCODE_CONFIG_CONTENT` document, merged into any you already export, pins it to this
+  profile, and the model is passed as `-m requesty/<model>`. A Requesty key stored earlier with
+  `opencode auth login` can take precedence over the profile's; the CLI warns when the two differ.
+- **Pi** has no flag for a custom provider, so the CLI writes a small extension and a catalog of
+  the models your key can route to under `~/.requesty/pi/` and starts Pi with `--extension`. The
+  catalog is refreshed from your account on each launch and kept from last time when that fails.
+  Other vendors' API key variables are dropped from Pi's environment so every model it offers
+  goes through Requesty.
+- **Hermes** is started as `--provider custom` with `CUSTOM_BASE_URL` pointing at the router.
+  Hermes loads `~/.hermes/.env` over the environment, so the CLI warns when a value there would
+  replace one of its own.
+
+Reasoning effort (`--reasoning-effort minimal|low|medium|high|xhigh|max`) maps onto each harness's
+own flag; levels a harness does not support are rejected before it starts. Flags you pass through
+for the model, provider or effort take precedence over the CLI's.
 
 ## Profiles
 
@@ -367,8 +392,14 @@ automatically ran without a saved profile. Run `requesty login` or
 per group, and you are not in one yet. Ask an organization admin to add you to a group, then sign
 in again.
 
-**Claude Code or Codex gets a `401`.** The key was revoked or has expired. Replace that profile
-with `requesty login --profile <name> --force`.
+**A harness gets a `401`.** The key was revoked or has expired. Replace that profile
+with `requesty login --profile <name> --force`. With OpenCode, also check for a Requesty key stored
+by `opencode auth login`, which wins over the profile's; `opencode auth logout` removes it. With
+Hermes, check `~/.hermes/.env` for a `REQUESTY_API_KEY` or `CUSTOM_BASE_URL` entry, which Hermes
+loads over the environment.
+
+**`Requesty needs pi 0.84.0 or newer`.** `requesty pi` registers Requesty through Pi's provider
+extension API, which arrived in Pi 0.84.0. Upgrade Pi and try again.
 
 **`Could not load usage`.** The usage panel asks the management API about your own key, which any
 key may do. A `401` means the key was revoked or has expired: run `requesty login` to get a new
