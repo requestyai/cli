@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -31,20 +33,16 @@ type Config struct {
 	// HarnessModels is the model each harness was picked to launch with.
 	HarnessModels map[string]string `json:"harness_models,omitempty"`
 	// HarnessFastModels is the model each harness hands background work to,
-	// for harnesses that have such a slot. Kept apart from HarnessModels so
-	// a settings file stays readable by versions before it existed.
+	// for harnesses that have such a slot.
 	HarnessFastModels map[string]string `json:"harness_fast_models,omitempty"`
 }
 
-// SetHarnessModel remembers model as the one to launch harness with. It also
-// forgets the fast model: a new main model may sit in another region, so
-// what goes alongside it is settled afresh.
+// SetHarnessModel remembers model as the one to launch harness with.
 func (c *Config) SetHarnessModel(harness, model string) {
 	if c.HarnessModels == nil {
 		c.HarnessModels = make(map[string]string)
 	}
 	c.HarnessModels[harness] = model
-	delete(c.HarnessFastModels, harness)
 }
 
 // SetHarnessFastModel remembers model as the one harness hands background
@@ -56,11 +54,32 @@ func (c *Config) SetHarnessFastModel(harness, model string) {
 	c.HarnessFastModels[harness] = model
 }
 
+// APIBaseURL is the management API that corresponds to the router: the host's
+// "router" becomes "api-v2" and the local stack's port 40000 becomes 40003.
+// The path is left alone, and an address that cannot be parsed comes back as
+// it was given.
 func (c Config) APIBaseURL() string {
-	apiBaseURL := strings.Replace(c.RouterBaseURL, "router", "api-v2", 1)
-	apiBaseURL = strings.Replace(apiBaseURL, "40000", "40003", 1)
+	parsed, err := url.Parse(c.RouterBaseURL)
+	if err != nil || parsed.Host == "" {
+		return c.RouterBaseURL
+	}
 
-	return apiBaseURL
+	host, port := parsed.Hostname(), parsed.Port()
+	rewritten := strings.Replace(host, "router", "api-v2", 1)
+	if port == "40000" {
+		port = "40003"
+	}
+	if rewritten == host && port == parsed.Port() {
+		return c.RouterBaseURL
+	}
+
+	if port != "" {
+		parsed.Host = net.JoinHostPort(rewritten, port)
+	} else {
+		parsed.Host = rewritten
+	}
+
+	return parsed.String()
 }
 
 // Store is the saved profiles and which one is current.
@@ -167,6 +186,9 @@ func Load() (Store, error) {
 		if err := json.Unmarshal(data, &store); err != nil {
 			return Store{}, fmt.Errorf("failed to parse config: %w", err)
 		}
+		if err := validate(store); err != nil {
+			return Store{}, err
+		}
 	}
 
 	for name, cfg := range store.Profiles {
@@ -197,6 +219,21 @@ func Save(store Store) error {
 
 	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
+}
+
+// validate reports a store that names no current profile, or names one that
+// is not saved. An empty store is the not-onboarded state and is fine.
+func validate(store Store) error {
+	if len(store.Profiles) > 0 && store.Current == "" {
+		return errors.New("current profile is required")
+	}
+	if store.Current != "" {
+		if _, ok := store.Profiles[store.Current]; !ok {
+			return fmt.Errorf("current profile %q is not saved", store.Current)
+		}
 	}
 
 	return nil

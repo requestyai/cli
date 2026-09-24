@@ -17,12 +17,11 @@ const (
 	harnessChooseModelFlag     = "--choose-model"
 	harnessFastModelFlag       = "--fast-model"
 	harnessChooseFastModelFlag = "--choose-fast-model"
-	harnessEffortFlag          = "--reasoning-effort"
 )
 
 // harnessValueFlags are our flags that take a value, as `--flag v` or
 // `--flag=v`.
-var harnessValueFlags = []string{harnessProfileFlag, harnessModelFlag, harnessFastModelFlag, harnessEffortFlag}
+var harnessValueFlags = []string{harnessProfileFlag, harnessModelFlag, harnessFastModelFlag}
 
 // errHarnessHelp signals that the leading flags asked for help.
 var errHarnessHelp = errors.New("help requested")
@@ -118,9 +117,7 @@ func newHarnessCommands(env *environment) []*cobra.Command {
 }
 
 // newHarnessCommand builds `requesty <binary>`. The harness is constructed
-// lazily, from the profile as it stands after any onboarding, so a machine
-// without a resolvable home directory still gets a help page and a clear
-// error, rather than a missing command.
+// lazily, from the profile as it stands after any onboarding.
 func newHarnessCommand(env *environment, spec harnessSpec) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   harnessUse(spec),
@@ -168,42 +165,37 @@ func harnessUse(spec harnessSpec) string {
 		use += fmt.Sprintf(" [%s <id> | %s]", harnessFastModelFlag, harnessChooseFastModelFlag)
 	}
 
-	return use + fmt.Sprintf(" [%s <level>] [-- ] [%s args...]", harnessEffortFlag, spec.binary)
+	return use + fmt.Sprintf(" [-- ] [%s args...]", spec.binary)
 }
 
 // harnessLong is the help page of `requesty <binary>`.
 func harnessLong(spec harnessSpec) string {
 	flags := [][2]string{
-		{harnessProfileFlag + " <name>", "Saved profile to run as (also " + profileEnv + ")"},
+		{harnessProfileFlag + " <name>", "Saved profile to run as"},
 		{harnessModelFlag + " <id>", "Model for this run only (a managed policy or any Requesty model id)"},
-		{harnessChooseModelFlag, "Pick the model to launch with from now on"},
+		{harnessChooseModelFlag, "Pick the model again and remember it"},
 	}
 	if spec.hasFastModel() {
 		flags = append(flags,
 			[2]string{harnessFastModelFlag + " <id>", "Model for background work, this run only"},
-			[2]string{harnessChooseFastModelFlag, "Pick the model for background work from now on"},
+			[2]string{harnessChooseFastModelFlag, "Pick the background model again and remember it"},
 		)
 	}
-	flags = append(flags,
-		[2]string{harnessEffortFlag + " <level>", "Reasoning effort: " + strings.Join(harnesses.Efforts, ", ")},
-		[2]string{"-h, --help", "Show this help"},
-	)
+	flags = append(flags, [2]string{"-h, --help", "Show this help"})
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Launch %s with its traffic routed through Requesty for this run only.\n\n", spec.displayName)
+	fmt.Fprintf(&b, "Launch %s through Requesty for this run; its own configuration is not changed.\n\n", spec.displayName)
 	b.WriteString("Flags:\n")
 	for _, flag := range flags {
 		fmt.Fprintf(&b, "  %-28s %s\n", flag[0], flag[1])
 	}
 	fmt.Fprintf(&b, "\nAnything else, or everything after `--`, is passed to `%s` untouched.\n\n", spec.binary)
-	fmt.Fprintf(&b, "Without %s, the model remembered for this harness in the profile is used. The first\n", harnessModelFlag)
-	fmt.Fprintf(&b, "time, %s is used when the profile can route to it, else a picker asks; either way\n", spec.defaultModels[0])
-	fmt.Fprintf(&b, "the answer is remembered and %s picks again.\n\n", harnessChooseModelFlag)
+	fmt.Fprintf(&b, "The first launch settles the model: %s is used when the profile can route to it,\n", spec.defaultModels[0])
+	fmt.Fprintf(&b, "else a picker asks. The answer is remembered in the profile.")
 	if spec.hasFastModel() {
-		fmt.Fprintf(&b, "%s hands background work (titles, summaries, subagents marked haiku) to a smaller\n", spec.displayName)
-		fmt.Fprintf(&b, "model. That is settled the same way, preferring %s and falling back to the main\n", spec.defaultFastModels[0])
-		fmt.Fprintf(&b, "model itself; %s picks again.\n\n", harnessChooseFastModelFlag)
+		fmt.Fprintf(&b, " Background work is settled\nthe same way, preferring %s.", spec.defaultFastModels[0])
 	}
+	b.WriteString("\n")
 
 	return b.String()
 }
@@ -311,11 +303,6 @@ func (p *harnessArgs) set(flag, value string) error {
 		p.launch.Model = value
 	case harnessFastModelFlag:
 		p.launch.FastModel = value
-	case harnessEffortFlag:
-		if !slices.Contains(harnesses.Efforts, value) {
-			return fmt.Errorf("%s must be one of %s (got %q)", flag, strings.Join(harnesses.Efforts, ", "), value)
-		}
-		p.launch.Effort = value
 	}
 
 	return nil

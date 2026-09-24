@@ -39,20 +39,19 @@ func TestParseHarnessArgs(t *testing.T) {
 		},
 		{
 			name: "leading flags then passthrough",
-			args: []string{"--profile", "eu", "--model", "anthropic/claude-fable-5", "--reasoning-effort=high", "--dangerously-skip-permissions", "-p", "hi"},
+			args: []string{"--profile", "eu", "--model", "anthropic/claude-fable-5", "--effort", "high", "--dangerously-skip-permissions", "-p", "hi"},
 			want: harnessArgs{
 				profile: "eu",
 				launch: harnesses.LaunchOptions{
-					Model:  "anthropic/claude-fable-5",
-					Effort: harnesses.EffortHigh,
-					Args:   []string{"--dangerously-skip-permissions", "-p", "hi"},
+					Model: "anthropic/claude-fable-5",
+					Args:  []string{"--effort", "high", "--dangerously-skip-permissions", "-p", "hi"},
 				},
 			},
 		},
 		{
 			name: "equals form for every flag",
-			args: []string{"--profile=eu", "--model=openai/gpt-5", "--reasoning-effort=low"},
-			want: harnessArgs{profile: "eu", launch: harnesses.LaunchOptions{Model: "openai/gpt-5", Effort: harnesses.EffortLow}},
+			args: []string{"--profile=eu", "--model=openai/gpt-5"},
+			want: harnessArgs{profile: "eu", launch: harnesses.LaunchOptions{Model: "openai/gpt-5"}},
 		},
 		{
 			// The second --model belongs to the harness because a foreign flag came first.
@@ -105,11 +104,6 @@ func TestParseHarnessArgsErrors(t *testing.T) {
 		want string
 	}{
 		{
-			name: "unknown effort",
-			args: []string{"--reasoning-effort", "turbo"},
-			want: `--reasoning-effort must be one of minimal, low, medium, high, xhigh, max (got "turbo")`,
-		},
-		{
 			name: "model without value",
 			args: []string{"--model"},
 			want: "--model requires a value",
@@ -118,11 +112,6 @@ func TestParseHarnessArgsErrors(t *testing.T) {
 			name: "profile without value",
 			args: []string{"--profile"},
 			want: "--profile requires a value",
-		},
-		{
-			name: "effort without value",
-			args: []string{"--reasoning-effort"},
-			want: "--reasoning-effort requires a value",
 		},
 		{
 			name: "empty equals value",
@@ -201,7 +190,7 @@ func TestHarnessCommandHelpShowsOurFlags(t *testing.T) {
 	assert.Contains(t, output.String(), "--choose-model")
 	assert.Contains(t, output.String(), "--fast-model")
 	assert.Contains(t, output.String(), "--choose-fast-model")
-	assert.Contains(t, output.String(), "--reasoning-effort")
+	assert.NotContains(t, output.String(), "reasoning-effort", "effort belongs to the harness's own flags")
 	assert.Contains(t, output.String(), "passed to `claude`")
 	assert.Contains(t, output.String(), "claude-sonnet-4-6 is used when the profile can route to it")
 	assert.Contains(t, output.String(), "claude-haiku-4-5")
@@ -317,6 +306,19 @@ func TestEnsureModelsFallsBackToTheMainModelForBackgroundWork(t *testing.T) {
 	assert.Contains(t, stderr.String(), "Using claude-sonnet-4-6 for Claude Code background work")
 }
 
+func TestEnsureModelsForgetsFastModelWhenMainModelIsNewlyPicked(t *testing.T) {
+	env, cfg, cmd, _ := modelsEnvironment(t, routerServing(t, "claude-sonnet-4-6", "claude-haiku-4-5"), config.Config{
+		HarnessFastModels: map[string]string{"claude": "claude-haiku-4-5@eu"},
+	})
+
+	model, fast, err := env.ensureModels(cmd, cfg, claudeSpec, harnessArgs{})
+
+	require.NoError(t, err)
+	assert.Equal(t, "claude-sonnet-4-6", model)
+	assert.Equal(t, "claude-haiku-4-5", fast, "the remembered fast model is settled again next to the new main model")
+	assert.Equal(t, "claude-haiku-4-5", env.store.Profiles["work"].HarnessFastModels["claude"])
+}
+
 func TestEnsureModelsUsesWhatIsRememberedWithoutLookingUp(t *testing.T) {
 	env, cfg, cmd, stderr := modelsEnvironment(t, routerServing(t), config.Config{
 		HarnessModels:     map[string]string{"claude": "claude-fable-5"},
@@ -376,16 +378,6 @@ func TestEnsureModelsWithoutAFastModel(t *testing.T) {
 func TestHarnessProfileFlag(t *testing.T) {
 	command := newRootCommand(&environment{store: twoProfiles})
 	command.SetArgs([]string{"claude", "--profile", "sales"})
-
-	err := command.Execute()
-
-	require.ErrorContains(t, err, `profile "sales" not found`)
-}
-
-func TestHarnessProfileFromEnvironment(t *testing.T) {
-	t.Setenv(profileEnv, "sales")
-	command := newRootCommand(&environment{store: twoProfiles})
-	command.SetArgs([]string{"claude"})
 
 	err := command.Execute()
 

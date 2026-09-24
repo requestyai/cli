@@ -100,23 +100,9 @@ func (o *OpenCodeHarness) Status() (Status, error) {
 	return status, nil
 }
 
-// openCodeEfforts maps Launch effort levels onto OpenCode's --variant values,
-// which take the level name as is.
-var openCodeEfforts = map[string]string{
-	EffortMinimal: "minimal",
-	EffortLow:     "low",
-	EffortMedium:  "medium",
-	EffortHigh:    "high",
-	EffortXHigh:   "xhigh",
-	EffortMax:     "max",
-}
-
-// openCodeModelFlags and openCodeVariantFlags are the OpenCode flags that,
-// when the user passes them, mean we leave the corresponding choice alone.
-var (
-	openCodeModelFlags   = []string{"-m", "--model"}
-	openCodeVariantFlags = []string{"--variant"}
-)
+// openCodeModelFlags are the OpenCode flags that, when the user passes them,
+// mean we leave the model alone.
+var openCodeModelFlags = []string{"-m", "--model"}
 
 // Launch replaces this process with OpenCode pointed at Requesty. OpenCode
 // knows Requesty as a built-in provider that switches on when
@@ -130,11 +116,6 @@ func (o *OpenCodeHarness) Launch(opts LaunchOptions) error {
 	}
 	if !status.Executable {
 		return fmt.Errorf("`opencode` is not on PATH; install OpenCode (https://opencode.ai/docs) and try again")
-	}
-
-	effort, err := mapEffort(o.Name(), openCodeEfforts, opts.Effort)
-	if err != nil {
-		return err
 	}
 
 	env := parseEnvironmentVariables(opts.Env)
@@ -152,9 +133,6 @@ func (o *OpenCodeHarness) Launch(opts LaunchOptions) error {
 	argv := []string{"opencode"}
 	if opts.Model != "" && !hasAnyFlag(opts.Args, openCodeModelFlags) {
 		argv = append(argv, "-m", o.modelID(opts.Model))
-	}
-	if effort != "" && !hasAnyFlag(opts.Args, openCodeVariantFlags) {
-		argv = append(argv, "--variant", effort)
 	}
 	argv = append(argv, opts.Args...)
 

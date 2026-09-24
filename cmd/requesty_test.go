@@ -55,17 +55,6 @@ func TestAuthTokenPicksExplicitProfile(t *testing.T) {
 	assert.Equal(t, "rqsty-me\n", output.String())
 }
 
-func TestAuthTokenUsesEnvironmentProfile(t *testing.T) {
-	t.Setenv(profileEnv, "personal")
-	var output bytes.Buffer
-	command := newRootCommand(&environment{store: twoProfiles})
-	command.SetOut(&output)
-	command.SetArgs([]string{"auth", "token"})
-
-	require.NoError(t, command.Execute())
-	assert.Equal(t, "rqsty-me\n", output.String())
-}
-
 func TestAuthTokenRejectsMissingProfile(t *testing.T) {
 	command := newRootCommand(&environment{})
 	command.SetArgs([]string{"auth", "token"})

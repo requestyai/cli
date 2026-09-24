@@ -119,24 +119,11 @@ func (h *HermesHarness) Status() (Status, error) {
 	return status, nil
 }
 
-// hermesEfforts maps Launch effort levels onto Hermes's --reasoning values,
-// which take the level name as is.
-var hermesEfforts = map[string]string{
-	EffortMinimal: "minimal",
-	EffortLow:     "low",
-	EffortMedium:  "medium",
-	EffortHigh:    "high",
-	EffortXHigh:   "xhigh",
-	EffortMax:     "max",
-}
-
-// hermesProviderFlags, hermesModelFlags and hermesReasoningFlags are the
-// Hermes flags that, when the user passes them, mean we leave the
-// corresponding choice alone.
+// hermesProviderFlags and hermesModelFlags are the Hermes flags that, when
+// the user passes them, mean we leave the corresponding choice alone.
 var (
-	hermesProviderFlags  = []string{"--provider"}
-	hermesModelFlags     = []string{"-m", "--model"}
-	hermesReasoningFlags = []string{"--reasoning"}
+	hermesProviderFlags = []string{"--provider"}
+	hermesModelFlags    = []string{"-m", "--model"}
 )
 
 // hermesLaunchEnv are the variables the launch sets; a ~/.hermes/.env that
@@ -157,11 +144,6 @@ func (h *HermesHarness) Launch(opts LaunchOptions) error {
 		return fmt.Errorf("`hermes` is not on PATH; install Hermes (https://hermes-agent.nousresearch.com/docs/getting-started/quickstart) and try again")
 	}
 
-	effort, err := mapEffort(h.Name(), hermesEfforts, opts.Effort)
-	if err != nil {
-		return err
-	}
-
 	env := parseEnvironmentVariables(opts.Env)
 	env["CUSTOM_BASE_URL"] = h.config.RouterBaseURL + "/v1"
 	env["REQUESTY_API_KEY"] = h.config.APIKey
@@ -176,9 +158,6 @@ func (h *HermesHarness) Launch(opts LaunchOptions) error {
 	}
 	if opts.Model != "" && !hasAnyFlag(opts.Args, hermesModelFlags) {
 		argv = append(argv, "-m", opts.Model)
-	}
-	if effort != "" && !hasAnyFlag(opts.Args, hermesReasoningFlags) {
-		argv = append(argv, "--reasoning", effort)
 	}
 	argv = append(argv, opts.Args...)
 

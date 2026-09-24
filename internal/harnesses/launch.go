@@ -4,45 +4,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"sort"
 	"strings"
 )
-
-// Effort levels understood by Launch. Each harness translates them to its own
-// vocabulary and rejects the ones it cannot express.
-const (
-	EffortMinimal = "minimal"
-	EffortLow     = "low"
-	EffortMedium  = "medium"
-	EffortHigh    = "high"
-	EffortXHigh   = "xhigh"
-	EffortMax     = "max"
-)
-
-// Efforts lists every level Launch accepts, weakest first.
-var Efforts = []string{EffortMinimal, EffortLow, EffortMedium, EffortHigh, EffortXHigh, EffortMax}
-
-// mapEffort translates a Launch effort level through a harness's own table.
-func mapEffort(harness string, table map[string]string, effort string) (string, error) {
-	if effort == "" {
-		return "", nil
-	}
-
-	if native, ok := table[effort]; ok {
-		return native, nil
-	}
-
-	accepted := make([]string, 0, len(table))
-	for level := range table {
-		accepted = append(accepted, level)
-	}
-	sort.Slice(accepted, func(i, j int) bool {
-		return slices.Index(Efforts, accepted[i]) < slices.Index(Efforts, accepted[j])
-	})
-
-	return "", fmt.Errorf("%s does not support reasoning effort %q (accepted: %s)",
-		harness, effort, strings.Join(accepted, ", "))
-}
 
 // launchNotImplemented is what harnesses without a launcher say instead of
 // doing anything.
