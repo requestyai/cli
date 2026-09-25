@@ -21,7 +21,7 @@ func TestClaudeHarnessRoundTrip(t *testing.T) {
 	settingsPath := filepath.Join(configDir, "settings.json")
 	require.NoError(t, os.WriteFile(settingsPath, []byte(`{"theme": "dark"}`), 0o600))
 
-	harness := NewClaudeHarness(config, configDir)
+	harness := newClaudeHarness(config, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
@@ -47,7 +47,7 @@ func TestClaudeHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	}
 	configDir := t.TempDir()
 	settingsPath := filepath.Join(configDir, "settings.json")
-	harness := NewClaudeHarness(config, configDir)
+	harness := newClaudeHarness(config, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "anthropic/claude-fable-5",
@@ -62,13 +62,4 @@ func TestClaudeHarnessConfigureCreatesMissingConfig(t *testing.T) {
 			"ANTHROPIC_MODEL": "anthropic/claude-fable-5"
 		}
 	}`, string(settings))
-}
-
-func TestClaudeHarnessDefaultConfigDir(t *testing.T) {
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
-
-	configDir, err := DefaultConfigDirClaudeCode()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(homePath, ".claude"), configDir)
 }

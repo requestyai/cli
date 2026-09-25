@@ -48,7 +48,7 @@ func newTestClient(t *testing.T, status int, reply string) (*Client, *recorder) 
 	}))
 	t.Cleanup(server.Close)
 
-	return New(config.Config{APIBaseURL: server.URL, APIKey: "test-key"}), seen
+	return New(config.Config{RouterBaseURL: server.URL, APIKey: "test-key"}), seen
 }
 
 func mustParseTime(t *testing.T, value string) *time.Time {
@@ -133,6 +133,15 @@ func TestClientCreateAPIKey(t *testing.T) {
 	assert.Equal(t, "/v1/manage/apikey", seen.path)
 	assert.JSONEq(t, `{"name":"production","monthly_limit":"100","permissions":{"manage":"read","completions":"write"}}`, seen.body)
 	assert.Equal(t, CreatedAPIKey{ID: "key-1", Secret: "rqsty-secret"}, created)
+}
+
+func TestClientCreateAPIKeyInGroup(t *testing.T) {
+	client, seen := newTestClient(t, http.StatusOK, `{"api_key_id":"key-1","api_key":"rqsty-secret"}`)
+
+	_, err := client.CreateAPIKey(context.Background(), CreateAPIKeyInput{Name: "cli", GroupID: "group-1"})
+
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"name":"cli","group_id":"group-1"}`, seen.body)
 }
 
 func TestClientCreateAPIKeyOmitsUnsetFields(t *testing.T) {
@@ -245,7 +254,7 @@ func TestClientAPIKeysUnauthenticated(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(config.Config{APIBaseURL: server.URL})
+	client := New(config.Config{RouterBaseURL: server.URL})
 	keys, err := client.APIKeys(context.Background())
 
 	require.NoError(t, err)
@@ -261,7 +270,7 @@ func TestClientCreateAPIKeySendsJSONContentType(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New(config.Config{APIBaseURL: server.URL, APIKey: "test-key"})
+	client := New(config.Config{RouterBaseURL: server.URL, APIKey: "test-key"})
 	_, err := client.CreateAPIKey(context.Background(), CreateAPIKeyInput{Name: "production"})
 
 	require.NoError(t, err)

@@ -4,7 +4,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/requestyai/cli/internal/config"
-	"github.com/requestyai/cli/internal/tui/pages/onboarding/apikey"
 )
 
 // frame is the breathing room around everything the UI draws.
@@ -19,7 +18,7 @@ const (
 	contentHeight = windowHeight - 2*framePadY
 )
 
-// Root delegates the session to whichever app is currently active.
+// Root frames the configured Requesty app.
 type Root struct {
 	active tea.Model
 
@@ -27,20 +26,13 @@ type Root struct {
 	width, height int
 }
 
-// NewRoot builds the UI. A config, saved by an earlier run, skips
-// onboarding.
+// NewRoot builds the configured Requesty UI.
 func NewRoot(cfg config.Config) Root {
-	root := Root{
-		active: NewOnboardingApp(),
+	return Root{
+		active: NewRequestyApp(cfg),
 		width:  contentWidth,
 		height: contentHeight,
 	}
-
-	if cfg.APIKey != "" {
-		root.active = NewRequestyApp(cfg)
-	}
-
-	return root
 }
 
 func (r Root) Init() tea.Cmd {
@@ -62,15 +54,6 @@ func (r Root) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c":
 			return r, tea.Quit
 		}
-
-	case apikey.DoneMsg:
-		r.active = NewRequestyApp(typedMsg.Config)
-		r.active, _ = r.active.Update(tea.WindowSizeMsg{
-			Width:  r.width,
-			Height: r.height,
-		})
-
-		return r, r.active.Init()
 	}
 
 	var cmd tea.Cmd

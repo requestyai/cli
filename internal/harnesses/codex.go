@@ -6,6 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/pelletier/go-toml/v2"
 	"github.com/requestyai/cli/internal/config"
@@ -43,12 +45,17 @@ type CodexHarness struct {
 	configDir string
 }
 
-// DefaultConfigDirCodex is where Codex keeps its configuration.
-func DefaultConfigDirCodex() (string, error) {
-	return configDirInHome(".codex")
+// NewCodexHarness is Codex at its default configuration directory.
+func NewCodexHarness(config config.Config) (Harness, error) {
+	configDir, err := configDirInHome(".codex")
+	if err != nil {
+		return nil, err
+	}
+
+	return newCodexHarness(config, configDir), nil
 }
 
-func NewCodexHarness(config config.Config, configDir string) *CodexHarness {
+func newCodexHarness(config config.Config, configDir string) *CodexHarness {
 	return &CodexHarness{
 		config:    config,
 		configDir: configDir,
@@ -69,8 +76,9 @@ func (c *CodexHarness) Description() []string {
 func (c *CodexHarness) Status() (Status, error) {
 	status := Status{}
 
-	if _, err := exec.LookPath("codex"); err == nil {
+	if path, err := exec.LookPath("codex"); err == nil {
 		status.Executable = true
+		status.ExecutablePath = path
 	} else if !errors.Is(err, exec.ErrNotFound) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
@@ -137,7 +145,7 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 				},
 				"auth": map[string]any{
 					"command": "requesty",
-					"args":    []string{"auth", "token"},
+					"args":    c.authArgs(),
 				},
 			},
 		},
@@ -166,7 +174,7 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 				},
 				Auth: codexProviderAuth{
 					Command: "requesty",
-					Args:    []string{"auth", "token"},
+					Args:    c.authArgs(),
 				},
 			},
 		},
@@ -185,4 +193,60 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 
 func (c *CodexHarness) configPath() string {
 	return filepath.Join(c.configDir, "config.toml")
+}
+
+func (c *CodexHarness) authArgs() []string {
+	return []string{"auth", "token", "--profile", c.config.Name}
+}
+
+// Launch replaces this process with Codex pointed at Requesty using
+// `-c key=value` overrides, which outrank ~/.codex/config.toml for this run
+// only. Nothing is written to disk; the key is fetched on demand through
+// `requesty auth token`, so it appears in neither argv nor the environment.
+func (c *CodexHarness) Launch(opts LaunchOptions) error {
+	status, err := c.Status()
+	if err != nil {
+		return fmt.Errorf("failed to check %s: %w", c.Name(), err)
+	}
+	if !status.Executable {
+		return fmt.Errorf("`codex` is not on PATH; install Codex (https://developers.openai.com/codex/cli) and try again")
+	}
+
+	provider := "model_providers." + codexModelProvider
+	argv := []string{
+		"codex",
+		"-c", "model_provider=" + tomlString(codexModelProvider),
+		"-c", provider + ".name=" + tomlString("Requesty"),
+		"-c", provider + ".base_url=" + tomlString(c.config.RouterBaseURL+"/v1"),
+		"-c", provider + ".http_headers.X-Title=" + tomlString("OpenAI Codex"),
+		"-c", provider + ".auth.command=" + tomlString(requestyExecutable()),
+		"-c", provider + ".auth.args=[" + tomlString("auth") + "," + tomlString("token") + "," + tomlString("--profile") + "," + tomlString(c.config.Name) + "]",
+		"-c", "model_supports_reasoning_summaries=false",
+	}
+	if opts.Model != "" {
+		argv = append(argv, "-m", opts.Model)
+	}
+	argv = append(argv, opts.Args...)
+
+	env := opts.Env
+	if env == nil {
+		env = os.Environ()
+	}
+
+	if err := execProcess(status.ExecutablePath, argv, env); err != nil {
+		return fmt.Errorf("failed to launch codex: %w", err)
+	}
+
+	return nil
+}
+
+// tomlString quotes s as a TOML string for a Codex -c override. Codex parses
+// the value side as TOML, so unquoted text with spaces or slashes would be
+// rejected. Literal strings are preferred because they need no escaping.
+func tomlString(s string) string {
+	if !strings.ContainsAny(s, "'\n\r") {
+		return "'" + s + "'"
+	}
+
+	return strconv.Quote(s)
 }

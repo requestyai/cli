@@ -71,6 +71,7 @@ type CreateAPIKeyInput struct {
 	Name         string
 	MonthlyLimit *decimal.Decimal
 	Permissions  *APIKeyPermissions
+	GroupID      string
 }
 
 // CreatedAPIKey carries the secret the API returns once and never again.
@@ -122,10 +123,12 @@ func (c *Client) CreateAPIKey(ctx context.Context, input CreateAPIKeyInput) (Cre
 		Name         string             `json:"name"`
 		MonthlyLimit *decimal.Decimal   `json:"monthly_limit,omitempty"`
 		Permissions  *APIKeyPermissions `json:"permissions,omitempty"`
+		GroupID      string             `json:"group_id,omitempty"`
 	}{
 		Name:         input.Name,
 		MonthlyLimit: input.MonthlyLimit,
 		Permissions:  input.Permissions,
+		GroupID:      input.GroupID,
 	}
 
 	var created CreatedAPIKey

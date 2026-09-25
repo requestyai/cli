@@ -17,6 +17,8 @@ replaced by default.
 
 - [Quick start](#quick-start)
 - [First run](#first-run)
+- [Launching a harness](#launching-a-harness)
+- [Profiles](#profiles)
 - [Supported harnesses](#supported-harnesses)
 - [Usage](#usage)
 - [Merge or overwrite](#merge-or-overwrite)
@@ -41,26 +43,139 @@ a new terminal, or run the `source` command it prints, then run `requesty`.
 
 ## First run
 
-**Paste an API key**
+**Sign in with your browser**
 
-On first run the CLI asks for a key. Create one on the
-[API keys page](https://app.requesty.ai/api-keys). The key is checked against the gateway before
-it is saved, so a typo is rejected here instead of failing later. It is stored in
-`~/.requesty/config.json` and reused on every later run, so this happens once.
+The first time you run `requesty` or a harness command such as `requesty claude` on a machine without a profile,
+the CLI opens your browser to sign in to Requesty straight away; once you approve, it creates an
+API key in your account, named after this machine (`Requesty CLI (my-laptop)`), and saves it as a
+[profile](#profiles) in `~/.requesty/config.json`. The app then carries on to its dashboard, or
+the harness you asked for starts. Every later run reuses that profile. The key shows up on the
+[API keys page](https://app.requesty.ai/api-keys) like any other, and can be revoked there.
 
 ```text
 ╭──────────────────────────────────────────────────────────────────╮
 │ Welcome to Requesty                                              │
+│                                                                  │
 │ One gateway for every model, in every tool you use, or app you   │
 │ build.                                                           │
 │                                                                  │
-│ Paste an API key from https://app.requesty.ai/api-keys to begin. │
+│ Waiting for you to finish signing in with your browser…          │
 │                                                                  │
-│ ❯ rqsty-...                                                      │
+│ If it did not open, visit this address:                          │
+│ https://app.requesty.ai/oauth/authorize?...                      │
 │                                                                  │
-│ enter continue · ctrl+c quit                                 dev │
+│ Claude Code starts as soon as the key is saved.                  │
+│                                                                  │
+│ Working over SSH, or already have a key? Quit and run `requesty  │
+│ login --api-key <key>` instead.                                  │
+│                                                                  │
+│ esc quit                                                         │
 ╰──────────────────────────────────────────────────────────────────╯
 ```
+
+`esc` quits; run the command again to retry. The key is created in your group. If you belong to several groups a dialog
+asks which one; if you belong to none it is a personal key. Organizations that require keys to live
+in a group will say so, in which case ask an admin to add you to one. The profile is named
+`default`; pass `--profile <name>` to choose another name.
+
+**`requesty login`**
+
+`requesty login` runs the same sign-in from the command line. Use it to set up a machine before
+launching anything, to pick a group without being asked (`--group Engineering`), to name the
+profile yourself (`--profile eu`), to point it at another router (`--router-url`), or to replace a
+key that was revoked or has expired. Existing profiles are left alone unless you pass `--force`.
+
+**Over SSH, or with a key you already have**
+
+The browser hands the sign-in back to the CLI on `127.0.0.1`, which does not work over SSH. Create
+a key on the [API keys page](https://app.requesty.ai/api-keys) and run
+`requesty login --api-key <key>` instead. The key is checked against the gateway before it is
+saved, so a typo is rejected here instead of failing later. It is saved as the profile `default`
+unless you pass `--profile`.
+
+## Launching a harness
+
+`requesty claude`, `requesty codex`, `requesty opencode`, `requesty pi` and `requesty hermes`
+start the harness with its traffic routed through Requesty for that run only; the harness's own
+configuration is not changed. The current profile is used unless you select another.
+
+The first time you launch a harness from a profile, the CLI settles which model it should use and
+remembers the answer in the profile. When the key can route to the harness's recommended default
+(`claude-sonnet-5` for Claude Code, `gpt-6-sol` for Codex, and for OpenCode, Pi and Hermes whichever
+of the two the key can route to first), that is used and printed, without asking. Otherwise a
+picker asks: the Policies tab lists Requesty's managed policies, which name a model once and
+route it across providers, and `tab` switches to every model the key can route to. `--model`
+overrides the remembered model for one run without changing it; `--choose-model` opens the picker
+to change it. In a script or CI with no terminal to ask in, the default is still used when it can
+be; otherwise pass `--model`, or pick once interactively first.
+
+Claude Code hands background work (session titles, summaries, subagents marked `haiku`) to a
+smaller model, which it would otherwise ask for by an Anthropic model id the gateway does not
+know. The CLI settles this the same way: `claude-haiku-4-5` when the key can route to it, else the
+main model itself, so an access list without Haiku still works. `--choose-fast-model` opens the
+picker to change it and `--fast-model` overrides it for one run.
+
+```sh
+requesty claude                                    # current profile, remembered model (settled the first time)
+requesty claude --profile eu                       # a named profile, with its own remembered model
+requesty claude --model anthropic/claude-opus-4-1  # this model, just for this run
+requesty claude --choose-model                     # pick again and remember the new answer
+requesty claude --choose-fast-model                # pick what background work runs on
+requesty codex --full-auto                         # everything else goes to the harness untouched
+requesty claude --effort high                      # so its own flags work as usual
+requesty opencode --model gpt-6-sol run "explain this repo"
+requesty pi --thinking off
+requesty hermes chat -q "hello"
+```
+
+`--profile <name>` picks the profile for a run; without it, the current profile set with
+`requesty profiles use` is used. For a harness command, put `--profile` after the harness name and
+before the first argument that is passed through to the harness.
+
+Each harness is pointed at Requesty in the way it allows without touching its files:
+
+- **Claude Code** gets `ANTHROPIC_BASE_URL` and the key through the environment plus a
+  `--settings` document for this run.
+- **Codex** gets a `requesty` model provider through `-c` overrides.
+- **OpenCode** knows Requesty as a built-in provider that switches on when `REQUESTY_API_KEY` is
+  set; an `OPENCODE_CONFIG_CONTENT` document, merged into any you already export, pins it to this
+  profile, and the model is passed as `-m requesty/<model>`. A Requesty key stored earlier with
+  `opencode auth login` can take precedence over the profile's; the CLI warns when the two differ.
+- **Pi** has no flag for a custom provider, so the CLI writes a small extension and a catalog of
+  the models your key can route to under `~/.requesty/pi/` and starts Pi with `--extension`. The
+  catalog is refreshed from your account on each launch and kept from last time when that fails.
+  Other vendors' API key variables are dropped from Pi's environment so every model it offers
+  goes through Requesty.
+- **Hermes** is started as `--provider custom` with `CUSTOM_BASE_URL` pointing at the router.
+  Hermes loads `~/.hermes/.env` over the environment, so the CLI warns when a value there would
+  replace one of its own.
+
+Anything the harness itself can be told, such as reasoning effort, is left to the harness's own
+flags: `claude --effort high`, `codex -c model_reasoning_effort=high`, `opencode --variant high`,
+`pi --thinking high`, `hermes --reasoning high`. A model or provider flag you pass through takes
+precedence over the CLI's.
+
+## Profiles
+
+A profile is one sign-in: an API key and the router it is sent to. Most people have one. You want
+more when your organization gives you keys in
+different groups with different model policies (an EU group and a US group, say), or when you use
+Requesty for work and personally on the same machine. Keys with manage permissions for the
+`api-keys`, `groups` and `access-lists` subcommands fit here too: save one with
+`requesty login --api-key <key> --profile manage` and pass `--profile manage` to those commands.
+
+```sh
+requesty profiles list                                  # what is saved, current marked with *
+requesty profiles use eu                                # make this profile current
+requesty profiles remove personal                       # forget a profile (the key is not revoked)
+```
+
+`requesty login` creates the `default` profile unless you pass `--profile`. The first profile
+becomes current. Every command accepts `--profile <name>`.
+
+Harnesses configured from the dashboard stay pinned to the profile used during configuration.
+Claude Code stores that profile's key in its settings. Codex fetches the key through
+`requesty auth token --profile <name>`. Configure the harness again to move it to another profile.
 
 **Pick a harness**
 
@@ -124,9 +239,9 @@ a later run of the CLI keeps those entries and only adds the model you selected 
 
 ## Usage
 
-Above the harness list, the CLI shows spend, requests and tokens for the last 30 days for the key
-you onboarded with, and refreshes them on demand. Full breakdowns by model, user and tool live in
-the [Requesty dashboard](https://app.requesty.ai/analytics).
+Above the harness list, the CLI shows spend, requests and tokens for the last 30 days for the
+profile it is running as, and refreshes them on demand. Full breakdowns by model, user and tool
+live in the [Requesty dashboard](https://app.requesty.ai/analytics).
 
 ## Merge or overwrite
 
@@ -154,13 +269,20 @@ mv ~/.claude/settings.json.requesty.bak ~/.claude/settings.json
 
 ## Keys
 
-Your Requesty API key is written into `~/.requesty/config.json`. Codex retrieves it when needed
-through `requesty auth token`; other harnesses may also store it in their own config because that
-is how they authenticate. All files containing the key are written so that only your user can
-read them.
+Your Requesty API keys are written into `~/.requesty/config.json`, one per profile. Codex
+retrieves the current profile's key when needed through `requesty auth token`; other harnesses
+may also store it in their own config because that is how they authenticate. All files
+containing a key are written so that only your user can read them.
+
+A key created by signing in can make completions and read its own usage, nothing more. The
+management subcommands (`requesty api-keys`, `requesty groups`, `requesty access-lists`) need a
+key with manage permissions from the [API keys page](https://app.requesty.ai/api-keys), saved as
+its own profile with `requesty login --api-key <key> --profile <name>`. The short-lived token from
+the browser sign-in is used once to create the key and is never stored.
 
 Treat those files as secrets and do not commit them. Keys can be rotated or revoked at any time
-on the [API keys page](https://app.requesty.ai/api-keys).
+on the [API keys page](https://app.requesty.ai/api-keys); run `requesty login` afterwards to get
+a new one. Removing a profile with `requesty profiles remove` forgets the key locally only.
 
 ## Configuration
 
@@ -168,18 +290,27 @@ on the [API keys page](https://app.requesty.ai/api-keys).
 
 ```json
 {
-	"api_key": "rqsty-...",
-	"router_base_url": "https://router.requesty.ai"
+	"current": "engineering",
+	"profiles": {
+		"engineering": {
+			"api_key": "rqsty-..."
+		},
+		"eu": {
+			"api_key": "rqsty-...",
+			"router_base_url": "https://router.eu.requesty.ai"
+		}
+	}
 }
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `api_key` | The key written into harness configs and used for API calls |
-| `router_base_url` | Inference endpoint the harnesses are pointed at |
+- `current` names the profile used when none is selected explicitly. It is required whenever any
+  profiles are saved.
+- `profiles.<name>.api_key` authenticates API and harness requests.
+- `profiles.<name>.router_base_url` is that profile's inference endpoint. When omitted, it defaults
+  to `https://router.requesty.ai`.
 
-Change `router_base_url` to route through a different region or a self-hosted deployment, for
-example `https://router.eu.requesty.ai`. Delete the file to start over from onboarding.
+Set a profile's `router_base_url` to use a different region or self-hosted deployment. The config
+has no legacy single-key format; delete the file to start over from onboarding.
 
 ## Advanced installation options
 
@@ -247,13 +378,35 @@ gofmt -l .          # CI fails if this prints anything
 **A harness is listed but cannot be configured.** Its executable was not found on your `PATH`.
 Install the harness, then refresh the list.
 
-**`That key was not recognised`.** The gateway does not accept the key you pasted. Copy it again
-from the [API keys page](https://app.requesty.ai/api-keys).
+**`that API key was not recognised`.** The gateway does not accept the key you gave
+`requesty login --api-key`. Copy it again from the [API keys page](https://app.requesty.ai/api-keys).
 
-**`Could not load usage`.** The usage panel calls the management API with your key. A `401` means
-the key was revoked or has expired: create a new one on the
-[API keys page](https://app.requesty.ai/api-keys) and delete `~/.requesty/config.json` to
-re-onboard. Routing itself is unaffected by this panel.
+**The browser never comes back to the terminal.** The sign-in finishes by redirecting your browser
+to `127.0.0.1` on the machine running the CLI, so it cannot complete over SSH or in a container.
+Run `requesty login --api-key <key>` with a key from the
+[API keys page](https://app.requesty.ai/api-keys) instead, or forward the port shown in the
+sign-in URL.
+
+**`no Requesty profile configured; run requesty login`.** A command that cannot onboard
+automatically ran without a saved profile. Run `requesty login` or
+`requesty login --api-key <key>`.
+
+**`group_id is required for organizations in group budget mode`.** Your organization tracks spend
+per group, and you are not in one yet. Ask an organization admin to add you to a group, then sign
+in again.
+
+**A harness gets a `401`.** The key was revoked or has expired. Replace that profile
+with `requesty login --profile <name> --force`. With OpenCode, also check for a Requesty key stored
+by `opencode auth login`, which wins over the profile's; `opencode auth logout` removes it. With
+Hermes, check `~/.hermes/.env` for a `REQUESTY_API_KEY` or `CUSTOM_BASE_URL` entry, which Hermes
+loads over the environment.
+
+**`Requesty needs pi 0.84.0 or newer`.** `requesty pi` registers Requesty through Pi's provider
+extension API, which arrived in Pi 0.84.0. Upgrade Pi and try again.
+
+**`Could not load usage`.** The usage panel asks the management API about your own key, which any
+key may do. A `401` means the key was revoked or has expired: run `requesty login` to get a new
+one. Routing itself is unaffected by this panel.
 
 **The harness still uses its old provider.** Restart it. Configuration is read at startup.
 

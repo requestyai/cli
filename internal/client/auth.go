@@ -13,12 +13,7 @@ var ErrInvalidAPIKey = errors.New("invalid api key")
 // CheckAPIKey asks the gateway whether the configured key is a live one of its
 // own, rejecting a key that was never issued, was deleted, or has expired.
 func (c *Client) CheckAPIKey(ctx context.Context) error {
-	apiBaseURL, err := c.apiBaseURL()
-	if err != nil {
-		return fmt.Errorf("failed to get api base url: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiBaseURL+"/v1/auth/check", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.config.APIBaseURL()+"/v1/auth/check", nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

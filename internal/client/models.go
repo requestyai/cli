@@ -7,6 +7,8 @@ import (
 	"net/http"
 )
 
+// Model is one entry of a model list. Managed policies are listed in the
+// same shape, so they are Models too.
 type Model struct {
 	ID string `json:"id"`
 
@@ -23,7 +25,15 @@ type Model struct {
 }
 
 func (c *Client) Models(ctx context.Context) ([]Model, error) {
-	endpoint := fmt.Sprintf("%s/v1/models", c.config.RouterBaseURL)
+	return c.listModels(ctx, "/v1/models")
+}
+
+func (c *Client) ManagedPolicies(ctx context.Context) ([]Model, error) {
+	return c.listModels(ctx, "/v1/models/managed")
+}
+
+func (c *Client) listModels(ctx context.Context, path string) ([]Model, error) {
+	endpoint := c.config.RouterBaseURL + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

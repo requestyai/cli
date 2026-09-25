@@ -21,7 +21,7 @@ func TestOpenCodeHarnessRoundTrip(t *testing.T) {
 	configPath := filepath.Join(configDir, "opencode.json")
 	require.NoError(t, os.WriteFile(configPath, []byte(`{"theme": "system"}`), 0o600))
 
-	harness := NewOpenCodeHarness(config, configDir)
+	harness := newOpenCodeHarness(config, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
@@ -64,7 +64,7 @@ func TestOpenCodeHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	}
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "opencode.json")
-	harness := NewOpenCodeHarness(config, configDir)
+	harness := newOpenCodeHarness(config, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "anthropic/claude-fable-5",
@@ -85,13 +85,4 @@ func TestOpenCodeHarnessConfigureCreatesMissingConfig(t *testing.T) {
 			}
 		}
 	}`, string(settings))
-}
-
-func TestOpenCodeHarnessDefaultConfigDir(t *testing.T) {
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
-
-	configDir, err := DefaultConfigDirOpenCode()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(homePath, ".config", "opencode"), configDir)
 }
