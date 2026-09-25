@@ -32,6 +32,16 @@ func fakeBrowser(t *testing.T) func(string) error {
 	}
 }
 
+// testOptions fills in every required Options field for a login against
+// apiBaseURL.
+func testOptions(t *testing.T, apiBaseURL string) Options {
+	return Options{
+		APIBaseURL:  apiBaseURL,
+		Status:      &bytes.Buffer{},
+		OpenBrowser: fakeBrowser(t),
+	}
+}
+
 // authServer is a minimal authorization server. It records what the CLI sent
 // so tests can assert the wire contract.
 type authServer struct {
@@ -98,12 +108,10 @@ func TestLoginCompletesAuthorizationCodeFlow(t *testing.T) {
 
 	var status bytes.Buffer
 	var told string
-	token, err := Login(context.Background(), Options{
-		APIBaseURL:     server.URL + "/",
-		Status:         &status,
-		OpenBrowser:    fakeBrowser(t),
-		OnAuthorizeURL: func(url string) { told = url },
-	})
+	opts := testOptions(t, server.URL)
+	opts.Status = &status
+	opts.OnAuthorizeURL = func(url string) { told = url }
+	token, err := Login(context.Background(), opts)
 	require.NoError(t, err)
 
 	assert.Equal(t, "access-token", token.AccessToken)
@@ -157,11 +165,7 @@ func TestLoginReportsDeniedConsent(t *testing.T) {
 	server := httptest.NewServer(auth.handler())
 	defer server.Close()
 
-	_, err := Login(context.Background(), Options{
-		APIBaseURL:  server.URL,
-		Status:      &bytes.Buffer{},
-		OpenBrowser: fakeBrowser(t),
-	})
+	_, err := Login(context.Background(), testOptions(t, server.URL))
 
 	var oauthErr *Error
 	require.ErrorAs(t, err, &oauthErr)
@@ -180,11 +184,7 @@ func TestLoginRejectsStateMismatchFromServer(t *testing.T) {
 	server := httptest.NewServer(auth.handler())
 	defer server.Close()
 
-	_, err := Login(context.Background(), Options{
-		APIBaseURL:  server.URL,
-		Status:      &bytes.Buffer{},
-		OpenBrowser: fakeBrowser(t),
-	})
+	_, err := Login(context.Background(), testOptions(t, server.URL))
 
 	require.ErrorContains(t, err, "state mismatch")
 	assert.Nil(t, auth.tokenReq)
@@ -202,11 +202,7 @@ func TestLoginSurfacesTokenEndpointError(t *testing.T) {
 	server := httptest.NewServer(auth.handler())
 	defer server.Close()
 
-	_, err := Login(context.Background(), Options{
-		APIBaseURL:  server.URL,
-		Status:      &bytes.Buffer{},
-		OpenBrowser: fakeBrowser(t),
-	})
+	_, err := Login(context.Background(), testOptions(t, server.URL))
 
 	require.EqualError(t, err, "token exchange failed: invalid_grant: PKCE verification failed")
 	var oauthErr *Error
@@ -221,24 +217,40 @@ func TestLoginContinuesWhenBrowserCannotOpen(t *testing.T) {
 
 	var status bytes.Buffer
 	browser := fakeBrowser(t)
-	token, err := Login(context.Background(), Options{
-		APIBaseURL: server.URL,
-		Status:     &status,
-		OpenBrowser: func(address string) error {
-			_ = browser(address)
-			return assert.AnError
-		},
-	})
+	opts := testOptions(t, server.URL)
+	opts.Status = &status
+	opts.OpenBrowser = func(address string) error {
+		_ = browser(address)
+		return assert.AnError
+	}
+	token, err := Login(context.Background(), opts)
 
 	require.NoError(t, err)
 	assert.Equal(t, "access-token", token.AccessToken)
 	assert.Contains(t, status.String(), "Could not open a browser")
 }
 
-func TestLoginRequiresAPIBaseURL(t *testing.T) {
-	_, err := Login(context.Background(), Options{})
+func TestLoginRequiresEveryOption(t *testing.T) {
+	tests := []struct {
+		name   string
+		unset  func(*Options)
+		errMsg string
+	}{
+		{"api base url", func(o *Options) { o.APIBaseURL = "" }, "api base url is required"},
+		{"status", func(o *Options) { o.Status = nil }, "status writer is required"},
+		{"browser opener", func(o *Options) { o.OpenBrowser = nil }, "browser opener is required"},
+	}
 
-	require.EqualError(t, err, "api base url is required")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts := testOptions(t, "http://127.0.0.1:1")
+			tt.unset(&opts)
+
+			_, err := Login(context.Background(), opts)
+
+			require.EqualError(t, err, tt.errMsg)
+		})
+	}
 }
 
 func TestExchangeCodeRejectsNonBearerToken(t *testing.T) {

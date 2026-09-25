@@ -6,10 +6,10 @@ import (
 	"runtime"
 )
 
-// openBrowser asks the desktop to open url in the default browser. It returns
+// OpenBrowser asks the desktop to open url in the default browser. It returns
 // once the request has been handed off, without waiting for the browser to
 // exit, because some launchers block until the browser window closes.
-func openBrowser(url string) error {
+func OpenBrowser(url string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":

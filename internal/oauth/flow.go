@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 	"time"
 )
@@ -42,49 +41,43 @@ func (t *Token) Scopes() []string {
 	return strings.Fields(t.Scope)
 }
 
-// Options configures Login. Only APIBaseURL is required; the rest exist so
-// tests can stand in for the browser, the terminal, and the network.
+// Options configures Login.
 type Options struct {
 	// APIBaseURL is the management API address, for example
 	// https://api-v2.requesty.ai, which also hosts the authorization server.
 	APIBaseURL string
 
 	// Status receives progress messages, including the URL to visit for users
-	// whose browser cannot be opened from the terminal. Defaults to stderr.
+	// whose browser cannot be opened from the terminal.
 	Status io.Writer
 
-	// OpenBrowser opens url in the user's browser. Defaults to the platform
-	// launcher. A failure is reported on Status but does not abort the login.
+	// OpenBrowser opens url in the user's browser. A failure is reported on Status
+	// but does not abort the login.
 	OpenBrowser func(url string) error
 
 	// OnAuthorizeURL, when set, is told the address the browser is sent to,
-	// for front ends that draw it themselves rather than reading Status.
+	// for front ends that draw it themselves rather than reading Status. Optional.
 	OnAuthorizeURL func(url string)
+}
 
-	// HTTPClient sends the token request. Defaults to one with a timeout.
-	HTTPClient *http.Client
+func (o Options) validate() error {
+	switch {
+	case o.APIBaseURL == "":
+		return errors.New("api base url is required")
+	case o.Status == nil:
+		return errors.New("status writer is required")
+	case o.OpenBrowser == nil:
+		return errors.New("browser opener is required")
+	}
+	return nil
 }
 
 // Login runs the authorization code flow end to end: it starts a loopback
 // listener, sends the user to the consent page, waits for the redirect, and
 // exchanges the code for a token.
 func Login(ctx context.Context, opts Options) (*Token, error) {
-	apiBaseURL := strings.TrimRight(opts.APIBaseURL, "/")
-	if apiBaseURL == "" {
-		return nil, errors.New("api base url is required")
-	}
-
-	status := opts.Status
-	if status == nil {
-		status = os.Stderr
-	}
-	open := opts.OpenBrowser
-	if open == nil {
-		open = openBrowser
-	}
-	httpClient := opts.HTTPClient
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 30 * time.Second}
+	if err := opts.validate(); err != nil {
+		return nil, err
 	}
 
 	verifier, err := NewVerifier()
@@ -103,24 +96,27 @@ func Login(ctx context.Context, opts Options) (*Token, error) {
 	defer server.Close()
 
 	redirectURI := server.RedirectURI()
+	apiBaseURL := strings.TrimRight(opts.APIBaseURL, "/")
+
 	authorizeURL := authorizeURL(apiBaseURL, redirectURI, state, Challenge(verifier))
 	if opts.OnAuthorizeURL != nil {
 		opts.OnAuthorizeURL(authorizeURL)
 	}
 
-	_, _ = fmt.Fprintf(status,
+	_, _ = fmt.Fprintf(opts.Status,
 		"Opening your browser to sign in to Requesty.\n\nIf it does not open, visit this address:\n\n  %s\n\n",
 		authorizeURL)
-	if err := open(authorizeURL); err != nil {
-		_, _ = fmt.Fprintf(status, "Could not open a browser (%v); paste the address above into one.\n\n", err)
+	if err := opts.OpenBrowser(authorizeURL); err != nil {
+		_, _ = fmt.Fprintf(opts.Status, "Could not open a browser (%v); paste the address above into one.\n\n", err)
 	}
-	_, _ = fmt.Fprintln(status, "Waiting for you to finish signing in...")
+	_, _ = fmt.Fprintln(opts.Status, "Waiting for you to finish signing in...")
 
 	code, err := server.Wait(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("sign-in was not completed: %w", err)
 	}
 
+	httpClient := &http.Client{Timeout: 30 * time.Second}
 	return exchangeCode(ctx, httpClient, apiBaseURL, code, redirectURI, verifier)
 }
 
