@@ -61,6 +61,7 @@ func signIn(ctx context.Context, opts Options, onAuthorizeURL func(string)) (*se
 	token, err := oauth.Login(ctx, oauth.Options{
 		APIBaseURL:     opts.Config.APIBaseURL(),
 		Status:         status,
+		OpenBrowser:    oauth.OpenBrowser,
 		OnAuthorizeURL: onAuthorizeURL,
 	})
 	if err != nil {
