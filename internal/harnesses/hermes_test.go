@@ -29,7 +29,7 @@ custom_providers:
     api_key: "keep-me"
 `), 0o600))
 
-	harness := NewHermesHarness(config, configDir)
+	harness := newHermesHarness(config, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestHermesHarnessUpdatesExistingProvider(t *testing.T) {
     timeout: 300
 `), 0o600))
 
-	harness := NewHermesHarness(config, configDir)
+	harness := newHermesHarness(config, configDir)
 	require.NoError(t, harness.Configure(ConfigureOptions{Model: "anthropic/claude-fable-5"}))
 
 	settingsBytes, err := os.ReadFile(configPath)
@@ -124,7 +124,7 @@ func TestHermesHarnessConfigureCreatesMissingConfig(t *testing.T) {
 
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "config.yaml")
-	harness := NewHermesHarness(config, configDir)
+	harness := newHermesHarness(config, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "anthropic/claude-fable-5",
@@ -153,13 +153,4 @@ func TestHermesHarnessConfigureCreatesMissingConfig(t *testing.T) {
 			},
 		},
 	}, settings)
-}
-
-func TestHermesHarnessDefaultConfigDir(t *testing.T) {
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
-
-	configDir, err := DefaultConfigDirHermes()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(homePath, ".hermes"), configDir)
 }

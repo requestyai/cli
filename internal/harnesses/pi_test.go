@@ -29,7 +29,7 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 		"theme": "dark"
 	}`), 0o600))
 
-	harness := NewPiHarness(config, configDir)
+	harness := newPiHarness(config, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
@@ -87,7 +87,7 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	configDir := t.TempDir()
 	modelsPath := filepath.Join(configDir, "models.json")
 	settingsPath := filepath.Join(configDir, "settings.json")
-	harness := NewPiHarness(config, configDir)
+	harness := newPiHarness(config, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "anthropic/claude-fable-5",
@@ -120,13 +120,4 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 		"defaultModel": "anthropic/claude-fable-5",
 		"defaultThinkingLevel": "medium"
 	}`, string(settings))
-}
-
-func TestPiHarnessDefaultConfigDir(t *testing.T) {
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
-
-	configDir, err := DefaultConfigDirPi()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(homePath, ".pi", "agent"), configDir)
 }

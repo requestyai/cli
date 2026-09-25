@@ -29,7 +29,7 @@ llm-deepseek:
 `), 0o600))
 	require.NoError(t, os.WriteFile(credentialsPath, []byte("DEEPSEEK_API_KEY: keep-me\n"), 0o600))
 
-	harness := NewDeepSeekHarness(config, configDir)
+	harness := newDeepSeekHarness(config, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestDeepSeekHarnessConfigureCreatesMissingFiles(t *testing.T) {
 	}
 
 	configDir := t.TempDir()
-	harness := NewDeepSeekHarness(config, configDir)
+	harness := newDeepSeekHarness(config, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "anthropic/claude-fable-5",
@@ -156,7 +156,7 @@ func TestDeepSeekHarnessConfigureOverwriteReplacesSettings(t *testing.T) {
   apiKeyEnv: DEEPSEEK_API_KEY
 `), 0o600))
 
-	harness := NewDeepSeekHarness(config, configDir)
+	harness := newDeepSeekHarness(config, configDir)
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model:     "deepseek/deepseek-v4-pro-0813",
 		Overwrite: true,
@@ -201,7 +201,7 @@ func TestDeepSeekHarnessConfigureKeepsModelsAddedInHarness(t *testing.T) {
             - image
 `), 0o600))
 
-	harness := NewDeepSeekHarness(config, configDir)
+	harness := newDeepSeekHarness(config, configDir)
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "openai/gpt-5.4",
 	}))
@@ -238,23 +238,4 @@ func TestDeepSeekHarnessConfigureKeepsModelsAddedInHarness(t *testing.T) {
 	providers = settings["llm-pi-ai"].(map[string]any)["providers"].(map[string]any)
 	provider = providers["requesty"].(map[string]any)
 	assert.Len(t, provider["models"], 3)
-}
-
-func TestDeepSeekHarnessDefaultConfigDir(t *testing.T) {
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
-
-	t.Setenv("DSH_HOME", "")
-
-	configDir, err := DefaultConfigDirDeepSeek()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(homePath, ".dsh"), configDir)
-}
-
-func TestDeepSeekHarnessDefaultConfigDirFromEnvironment(t *testing.T) {
-	t.Setenv("DSH_HOME", filepath.Join("custom", "harness-home"))
-
-	configDir, err := DefaultConfigDirDeepSeek()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("custom", "harness-home"), configDir)
 }

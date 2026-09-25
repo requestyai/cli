@@ -45,12 +45,17 @@ type CodexHarness struct {
 	configDir string
 }
 
-// DefaultConfigDirCodex is where Codex keeps its configuration.
-func DefaultConfigDirCodex() (string, error) {
-	return configDirInHome(".codex")
+// NewCodexHarness is Codex at its default configuration directory.
+func NewCodexHarness(config config.Config) (Harness, error) {
+	configDir, err := configDirInHome(".codex")
+	if err != nil {
+		return nil, err
+	}
+
+	return newCodexHarness(config, configDir), nil
 }
 
-func NewCodexHarness(config config.Config, configDir string) *CodexHarness {
+func newCodexHarness(config config.Config, configDir string) *CodexHarness {
 	return &CodexHarness{
 		config:    config,
 		configDir: configDir,

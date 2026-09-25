@@ -43,17 +43,22 @@ type HermesHarness struct {
 	configDir string
 }
 
-// DefaultConfigDirHermes is where Hermes keeps its configuration. Hermes
-// reads HERMES_HOME first, so an explicit home wins over the default one.
-func DefaultConfigDirHermes() (string, error) {
+// NewHermesHarness is Hermes at its configuration directory. Hermes reads
+// HERMES_HOME first, so an explicit home wins over the default one.
+func NewHermesHarness(config config.Config) (Harness, error) {
 	if home := os.Getenv("HERMES_HOME"); home != "" {
-		return home, nil
+		return newHermesHarness(config, home), nil
 	}
 
-	return configDirInHome(".hermes")
+	configDir, err := configDirInHome(".hermes")
+	if err != nil {
+		return nil, err
+	}
+
+	return newHermesHarness(config, configDir), nil
 }
 
-func NewHermesHarness(config config.Config, configDir string) *HermesHarness {
+func newHermesHarness(config config.Config, configDir string) *HermesHarness {
 	return &HermesHarness{
 		config:    config,
 		configDir: configDir,
