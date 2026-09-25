@@ -58,6 +58,9 @@ type callbackServer struct {
 // The redirect URI must use the 127.0.0.1 literal, not localhost, so that is
 // what we bind to.
 func listenCallback(state string) (*callbackServer, error) {
+	// Port 0 has the OS pick a free port at random, so the
+	// redirect URI can only be built from the listener's address once it is bound;
+	// see [callbackServer.RedirectURI].
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen for the browser callback: %w", err)
