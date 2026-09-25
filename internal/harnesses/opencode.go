@@ -39,12 +39,18 @@ type OpenCodeHarness struct {
 	configDir string
 }
 
-// DefaultConfigDirOpenCode is where OpenCode keeps its global configuration.
-func DefaultConfigDirOpenCode() (string, error) {
-	return configDirInHome(".config", "opencode")
+// NewOpenCodeHarness is OpenCode at its default global configuration
+// directory.
+func NewOpenCodeHarness(config config.Config) (Harness, error) {
+	configDir, err := configDirInHome(".config", "opencode")
+	if err != nil {
+		return nil, err
+	}
+
+	return newOpenCodeHarness(config, configDir), nil
 }
 
-func NewOpenCodeHarness(config config.Config, configDir string) *OpenCodeHarness {
+func newOpenCodeHarness(config config.Config, configDir string) *OpenCodeHarness {
 	return &OpenCodeHarness{
 		config:    config,
 		configDir: configDir,

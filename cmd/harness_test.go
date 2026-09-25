@@ -24,6 +24,11 @@ func TestHarnessCommandsAreRegistered(t *testing.T) {
 		assert.Equal(t, name, sub.Name())
 		assert.True(t, sub.DisableFlagParsing, "%s must not interpret harness flags", name)
 	}
+
+	// Harnesses without a launcher get no command.
+	sub, _, err := command.Find([]string{"dsh"})
+	require.NoError(t, err)
+	assert.Equal(t, command.Name(), sub.Name(), "dsh must not be a command")
 }
 
 func TestParseHarnessArgs(t *testing.T) {
@@ -100,7 +105,7 @@ func TestParseHarnessArgsErrors(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
-		spec harnessSpec
+		spec harnesses.LaunchSpecification
 		want string
 	}{
 		{
@@ -155,7 +160,7 @@ func TestParseHarnessArgsErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			spec := tt.spec
-			if spec.binary == "" {
+			if spec.Binary == "" {
 				spec = claudeSpec
 			}
 
@@ -232,8 +237,8 @@ func TestHarnessWithoutFastModelRejectsItsFlags(t *testing.T) {
 }
 
 var (
-	claudeSpec = harnessSpec{binary: "claude", displayName: "Claude Code", defaultModels: []string{"claude-sonnet-4-6"}, defaultFastModels: []string{"claude-haiku-4-5"}}
-	codexSpec  = harnessSpec{binary: "codex", displayName: "Codex", defaultModels: []string{"gpt-5.5"}}
+	claudeSpec = harnesses.LaunchSpecification{Binary: "claude", Name: "Claude Code", DefaultModels: []string{"claude-sonnet-4-6"}, DefaultFastModels: []string{"claude-haiku-4-5"}}
+	codexSpec  = harnesses.LaunchSpecification{Binary: "codex", Name: "Codex", DefaultModels: []string{"gpt-5.5"}}
 )
 
 // routerServing is a router whose two model lists both hold ids. With none,
@@ -296,8 +301,8 @@ func TestEnsureModelsUsesRoutableDefaultsAndRemembersThem(t *testing.T) {
 func TestEnsureModelsTriesDefaultsInOrder(t *testing.T) {
 	env, cfg, cmd, _ := modelsEnvironment(t, routerServing(t, "claude-sonnet-4-5", "claude-haiku-3-5"), config.Config{})
 	spec := claudeSpec
-	spec.defaultModels = []string{"claude-sonnet-4-6", "claude-sonnet-4-5"}
-	spec.defaultFastModels = []string{"claude-haiku-4-5", "claude-haiku-3-5"}
+	spec.DefaultModels = []string{"claude-sonnet-4-6", "claude-sonnet-4-5"}
+	spec.DefaultFastModels = []string{"claude-haiku-4-5", "claude-haiku-3-5"}
 
 	model, fast, err := env.ensureModels(cmd, cfg, spec, harnessArgs{})
 

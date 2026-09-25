@@ -6,7 +6,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/requestyai/cli/internal/config"
 	"github.com/requestyai/cli/internal/harnesses"
 	"github.com/spf13/cobra"
 )
@@ -26,102 +25,23 @@ var harnessValueFlags = []string{harnessProfileFlag, harnessModelFlag, harnessFa
 // errHarnessHelp signals that the leading flags asked for help.
 var errHarnessHelp = errors.New("help requested")
 
-// harnessSpec is one `requesty <binary>` command.
-type harnessSpec struct {
-	// binary is the command name and the executable it launches.
-	binary string
-	// displayName is how the harness is referred to in messages.
-	displayName string
-	// defaultModels are the model ids to launch with when nothing has been
-	// picked yet, most preferred first; the first one the profile can
-	// route to is used without asking.
-	defaultModels []string
-	// defaultFastModels is the same for the model background work goes
-	// to. Empty for harnesses without such a slot.
-	defaultFastModels []string
-	newHarness        func(config.Config) (harnesses.Harness, error)
-}
-
-// hasFastModel reports whether the harness hands background work to a
-// second, smaller model.
-func (s harnessSpec) hasFastModel() bool {
-	return len(s.defaultFastModels) > 0
-}
-
 // newHarnessCommands returns the `requesty <harness>` commands, each of which
 // starts a harness with Requesty injected for that run.
 func newHarnessCommands(env *environment) []*cobra.Command {
-	return []*cobra.Command{
-		newHarnessCommand(env, harnessSpec{
-			binary:            "claude",
-			displayName:       "Claude Code",
-			defaultModels:     []string{"claude-sonnet-5"},
-			defaultFastModels: []string{"claude-haiku-4-5"},
-			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
-				dir, err := harnesses.DefaultConfigDirClaudeCode()
-				if err != nil {
-					return nil, err
-				}
-				return harnesses.NewClaudeHarness(cfg, dir), nil
-			},
-		}),
-		newHarnessCommand(env, harnessSpec{
-			binary:        "codex",
-			displayName:   "Codex",
-			defaultModels: []string{"gpt-6-sol"},
-			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
-				dir, err := harnesses.DefaultConfigDirCodex()
-				if err != nil {
-					return nil, err
-				}
-				return harnesses.NewCodexHarness(cfg, dir), nil
-			},
-		}),
-		newHarnessCommand(env, harnessSpec{
-			binary:        "opencode",
-			displayName:   "OpenCode",
-			defaultModels: []string{"claude-sonnet-5", "gpt-6-sol"},
-			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
-				dir, err := harnesses.DefaultConfigDirOpenCode()
-				if err != nil {
-					return nil, err
-				}
-				return harnesses.NewOpenCodeHarness(cfg, dir), nil
-			},
-		}),
-		newHarnessCommand(env, harnessSpec{
-			binary:        "pi",
-			displayName:   "Pi",
-			defaultModels: []string{"claude-sonnet-5", "gpt-6-sol"},
-			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
-				dir, err := harnesses.DefaultConfigDirPi()
-				if err != nil {
-					return nil, err
-				}
-				return harnesses.NewPiHarness(cfg, dir), nil
-			},
-		}),
-		newHarnessCommand(env, harnessSpec{
-			binary:        "hermes",
-			displayName:   "Hermes",
-			defaultModels: []string{"claude-sonnet-5", "gpt-6-sol"},
-			newHarness: func(cfg config.Config) (harnesses.Harness, error) {
-				dir, err := harnesses.DefaultConfigDirHermes()
-				if err != nil {
-					return nil, err
-				}
-				return harnesses.NewHermesHarness(cfg, dir), nil
-			},
-		}),
+	cmds := make([]*cobra.Command, 0, len(harnesses.LaunchSpecifications))
+	for _, spec := range harnesses.LaunchSpecifications {
+		cmds = append(cmds, newHarnessCommand(env, spec))
 	}
+
+	return cmds
 }
 
 // newHarnessCommand builds `requesty <binary>`. The harness is constructed
 // lazily, from the profile as it stands after any onboarding.
-func newHarnessCommand(env *environment, spec harnessSpec) *cobra.Command {
+func newHarnessCommand(env *environment, spec harnesses.LaunchSpecification) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   harnessUse(spec),
-		Short: fmt.Sprintf("Launch %s through Requesty", spec.displayName),
+		Short: fmt.Sprintf("Launch %s through Requesty", spec.Name),
 		Long:  harnessLong(spec),
 		// We take over parsing so harness flags are never interpreted as ours.
 		DisableFlagParsing:    true,
@@ -136,14 +56,14 @@ func newHarnessCommand(env *environment, spec harnessSpec) *cobra.Command {
 				return err
 			}
 
-			cfg, err := env.ensureProfile(cmd, parsed.profile, spec.displayName)
+			cfg, err := env.ensureProfile(cmd, parsed.profile, spec.Name)
 			if err != nil {
 				return err
 			}
 
-			harness, err := spec.newHarness(cfg)
+			harness, err := spec.New(cfg)
 			if err != nil {
-				return fmt.Errorf("failed to set up %s: %w", spec.displayName, err)
+				return fmt.Errorf("failed to set up %s: %w", spec.Name, err)
 			}
 
 			parsed.launch.Model, parsed.launch.FastModel, err = env.ensureModels(cmd, cfg, spec, parsed)
@@ -159,23 +79,23 @@ func newHarnessCommand(env *environment, spec harnessSpec) *cobra.Command {
 }
 
 // harnessUse is the one-line synopsis of `requesty <binary>`.
-func harnessUse(spec harnessSpec) string {
-	use := fmt.Sprintf("%s [%s <name>] [%s <id> | %s]", spec.binary, harnessProfileFlag, harnessModelFlag, harnessChooseModelFlag)
-	if spec.hasFastModel() {
+func harnessUse(spec harnesses.LaunchSpecification) string {
+	use := fmt.Sprintf("%s [%s <name>] [%s <id> | %s]", spec.Binary, harnessProfileFlag, harnessModelFlag, harnessChooseModelFlag)
+	if spec.HasFastModel() {
 		use += fmt.Sprintf(" [%s <id> | %s]", harnessFastModelFlag, harnessChooseFastModelFlag)
 	}
 
-	return use + fmt.Sprintf(" [-- ] [%s args...]", spec.binary)
+	return use + fmt.Sprintf(" [-- ] [%s args...]", spec.Binary)
 }
 
 // harnessLong is the help page of `requesty <binary>`.
-func harnessLong(spec harnessSpec) string {
+func harnessLong(spec harnesses.LaunchSpecification) string {
 	flags := [][2]string{
 		{harnessProfileFlag + " <name>", "Saved profile to run as"},
 		{harnessModelFlag + " <id>", "Model for this run only (a managed policy or any Requesty model id)"},
 		{harnessChooseModelFlag, "Pick the model again and remember it"},
 	}
-	if spec.hasFastModel() {
+	if spec.HasFastModel() {
 		flags = append(flags,
 			[2]string{harnessFastModelFlag + " <id>", "Model for background work, this run only"},
 			[2]string{harnessChooseFastModelFlag, "Pick the background model again and remember it"},
@@ -184,16 +104,16 @@ func harnessLong(spec harnessSpec) string {
 	flags = append(flags, [2]string{"-h, --help", "Show this help"})
 
 	var b strings.Builder
-	fmt.Fprintf(&b, "Launch %s through Requesty for this run; its own configuration is not changed.\n\n", spec.displayName)
+	fmt.Fprintf(&b, "Launch %s through Requesty for this run; its own configuration is not changed.\n\n", spec.Name)
 	b.WriteString("Flags:\n")
 	for _, flag := range flags {
 		fmt.Fprintf(&b, "  %-28s %s\n", flag[0], flag[1])
 	}
-	fmt.Fprintf(&b, "\nAnything else, or everything after `--`, is passed to `%s` untouched.\n\n", spec.binary)
-	fmt.Fprintf(&b, "The first launch settles the model: %s,\n", describeDefaults(spec.defaultModels))
+	fmt.Fprintf(&b, "\nAnything else, or everything after `--`, is passed to `%s` untouched.\n\n", spec.Binary)
+	fmt.Fprintf(&b, "The first launch settles the model: %s,\n", describeDefaults(spec.DefaultModels))
 	fmt.Fprintf(&b, "else a picker asks. The answer is remembered in the profile.")
-	if spec.hasFastModel() {
-		fmt.Fprintf(&b, " Background work is settled\nthe same way, preferring %s.", strings.Join(spec.defaultFastModels, ", then "))
+	if spec.HasFastModel() {
+		fmt.Fprintf(&b, " Background work is settled\nthe same way, preferring %s.", strings.Join(spec.DefaultFastModels, ", then "))
 	}
 	b.WriteString("\n")
 
@@ -225,7 +145,7 @@ type harnessArgs struct {
 // `requesty claude -p "hi"` both working, and lets a harness flag that happens
 // to share a name with ours (`codex --model`) still reach the harness when it
 // appears later. spec says which of our flags apply to this harness.
-func parseHarnessArgs(args []string, spec harnessSpec) (harnessArgs, error) {
+func parseHarnessArgs(args []string, spec harnesses.LaunchSpecification) (harnessArgs, error) {
 	var parsed harnessArgs
 
 flags:
@@ -276,12 +196,12 @@ flags:
 	if parsed.chooseFastModel && parsed.launch.FastModel != "" {
 		return parsed, fmt.Errorf("%s and %s cannot be combined", harnessFastModelFlag, harnessChooseFastModelFlag)
 	}
-	if !spec.hasFastModel() {
+	if !spec.HasFastModel() {
 		if parsed.launch.FastModel != "" {
-			return parsed, fmt.Errorf("%s has no separate model for background work; %s does not apply", spec.displayName, harnessFastModelFlag)
+			return parsed, fmt.Errorf("%s has no separate model for background work; %s does not apply", spec.Name, harnessFastModelFlag)
 		}
 		if parsed.chooseFastModel {
-			return parsed, fmt.Errorf("%s has no separate model for background work; %s does not apply", spec.displayName, harnessChooseFastModelFlag)
+			return parsed, fmt.Errorf("%s has no separate model for background work; %s does not apply", spec.Name, harnessChooseFastModelFlag)
 		}
 	}
 

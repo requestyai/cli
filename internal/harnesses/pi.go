@@ -54,12 +54,17 @@ type PiHarness struct {
 	configDir string
 }
 
-// DefaultConfigDirPi is where Pi keeps its agent configuration.
-func DefaultConfigDirPi() (string, error) {
-	return configDirInHome(".pi", "agent")
+// NewPiHarness is Pi at its default agent configuration directory.
+func NewPiHarness(config config.Config) (Harness, error) {
+	configDir, err := configDirInHome(".pi", "agent")
+	if err != nil {
+		return nil, err
+	}
+
+	return newPiHarness(config, configDir), nil
 }
 
-func NewPiHarness(config config.Config, configDir string) *PiHarness {
+func newPiHarness(config config.Config, configDir string) *PiHarness {
 	return &PiHarness{
 		config:    config,
 		configDir: configDir,
@@ -221,12 +226,6 @@ var piNeutralizedEnv = []string{
 	"ZAI_CODING_CN_API_KEY",
 }
 
-// DefaultLaunchDirPi is where `requesty pi` keeps the extension and model
-// catalog it hands to Pi: under our own directory, not Pi's.
-func DefaultLaunchDirPi() (string, error) {
-	return requestyDirInHome("pi")
-}
-
 // Launch replaces this process with Pi pointed at Requesty. Pi has no flag
 // or variable for a custom provider, so a small extension of ours, loaded
 // with --extension, registers Requesty with the models the profile can use.
@@ -241,7 +240,7 @@ func (p *PiHarness) Launch(opts LaunchOptions) error {
 		return fmt.Errorf("`pi` is not on PATH; install Pi (https://pi.dev) and try again")
 	}
 
-	launchDir, err := DefaultLaunchDirPi()
+	launchDir, err := requestyDirInHome("pi")
 	if err != nil {
 		return fmt.Errorf("failed to find launch directory: %w", err)
 	}

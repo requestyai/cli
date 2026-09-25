@@ -7,6 +7,7 @@ import (
 
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
+	"github.com/requestyai/cli/internal/harnesses"
 	"github.com/requestyai/cli/internal/modelpicker"
 	"github.com/requestyai/cli/internal/onboarding"
 	"github.com/spf13/cobra"
@@ -94,44 +95,44 @@ func (env *environment) ensureProfile(cmd *cobra.Command, name, harness string) 
 
 // ensureModels returns the model the harness launches with and, for
 // harnesses that have one, the model its background work goes to.
-func (env *environment) ensureModels(cmd *cobra.Command, cfg config.Config, spec harnessSpec, parsed harnessArgs) (model, fast string, err error) {
+func (env *environment) ensureModels(cmd *cobra.Command, cfg config.Config, spec harnesses.LaunchSpecification, parsed harnessArgs) (model, fast string, err error) {
 	model, pickedModel, err := env.ensureModel(cmd, cfg, modelRequest{
-		displayName:  spec.displayName,
+		displayName:  spec.Name,
 		override:     parsed.launch.Model,
 		overrideFlag: harnessModelFlag,
 		ask:          parsed.chooseModel,
 		askFlag:      harnessChooseModelFlag,
-		saved:        cfg.HarnessModels[spec.binary],
-		defaults:     spec.defaultModels,
+		saved:        cfg.HarnessModels[spec.Binary],
+		defaults:     spec.DefaultModels,
 	})
 	if err != nil {
 		return "", "", err
 	}
 	if pickedModel {
-		cfg.SetHarnessModel(spec.binary, model)
+		cfg.SetHarnessModel(spec.Binary, model)
 		// A new main model may sit in another region, so the fast model is
 		// forgotten and picked again below to go with it.
-		delete(cfg.HarnessFastModels, spec.binary)
+		delete(cfg.HarnessFastModels, spec.Binary)
 	}
 
 	pickedFast := false
-	if spec.hasFastModel() {
+	if spec.HasFastModel() {
 		// The main model is the last resort: it is known to be permitted,
 		// so an access list without any smaller model still works.
 		fast, pickedFast, err = env.ensureModel(cmd, cfg, modelRequest{
-			displayName:  spec.displayName + " background work",
+			displayName:  spec.Name + " background work",
 			override:     parsed.launch.FastModel,
 			overrideFlag: harnessFastModelFlag,
 			ask:          parsed.chooseFastModel,
 			askFlag:      harnessChooseFastModelFlag,
-			saved:        cfg.HarnessFastModels[spec.binary],
-			defaults:     slices.Concat(spec.defaultFastModels, []string{model}),
+			saved:        cfg.HarnessFastModels[spec.Binary],
+			defaults:     slices.Concat(spec.DefaultFastModels, []string{model}),
 		})
 		if err != nil {
 			return "", "", err
 		}
 		if pickedFast {
-			cfg.SetHarnessFastModel(spec.binary, fast)
+			cfg.SetHarnessFastModel(spec.Binary, fast)
 		}
 	}
 

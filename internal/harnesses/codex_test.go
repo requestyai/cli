@@ -24,7 +24,7 @@ func TestCodexIntegrationRoundTrip(t *testing.T) {
 	configPath := filepath.Join(configDir, "config.toml")
 	require.NoError(t, os.WriteFile(configPath, []byte("model = \"gpt-5.5\"\n"), 0o600))
 
-	harness := NewCodexHarness(cfg, configDir)
+	harness := newCodexHarness(cfg, configDir)
 
 	status, err := harness.Status()
 	require.NoError(t, err)
@@ -51,7 +51,7 @@ func TestCodexHarnessConfigureCreatesMissingConfig(t *testing.T) {
 	}
 	configDir := t.TempDir()
 	configPath := filepath.Join(configDir, "config.toml")
-	harness := NewCodexHarness(cfg, configDir)
+	harness := newCodexHarness(cfg, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model: "openai-responses/gpt-5.5",
@@ -79,7 +79,7 @@ func TestCodexHarnessConfigureOverwriteUsesProviderAuth(t *testing.T) {
 		APIKey:        "my-api-key",
 	}
 	configDir := t.TempDir()
-	harness := NewCodexHarness(cfg, configDir)
+	harness := newCodexHarness(cfg, configDir)
 
 	require.NoError(t, harness.Configure(ConfigureOptions{
 		Model:     "openai-responses/gpt-5.5",
@@ -134,13 +134,4 @@ func TestTomlStringQuotesForCodexOverrides(t *testing.T) {
 		require.NoError(t, toml.Unmarshal([]byte("value = "+tomlString(value)), &parsed))
 		assert.Equal(t, value, parsed.Value)
 	}
-}
-
-func TestCodexHarnessDefaultConfigDir(t *testing.T) {
-	homePath, err := os.UserHomeDir()
-	require.NoError(t, err)
-
-	configDir, err := DefaultConfigDirCodex()
-	require.NoError(t, err)
-	assert.Equal(t, filepath.Join(homePath, ".codex"), configDir)
 }

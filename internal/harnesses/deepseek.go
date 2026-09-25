@@ -70,18 +70,23 @@ type DeepSeekHarness struct {
 	configDir string
 }
 
-// DefaultConfigDirDeepSeek is the DeepSeek Harness home, which holds its
+// NewDeepSeekHarness is the DeepSeek Harness at its home, which holds its
 // settings and credentials. The harness reads DSH_HOME first, so an explicit
 // home wins over the default one.
-func DefaultConfigDirDeepSeek() (string, error) {
+func NewDeepSeekHarness(config config.Config) (Harness, error) {
 	if home := os.Getenv("DSH_HOME"); home != "" {
-		return home, nil
+		return newDeepSeekHarness(config, home), nil
 	}
 
-	return configDirInHome(".dsh")
+	configDir, err := configDirInHome(".dsh")
+	if err != nil {
+		return nil, err
+	}
+
+	return newDeepSeekHarness(config, configDir), nil
 }
 
-func NewDeepSeekHarness(config config.Config, configDir string) *DeepSeekHarness {
+func newDeepSeekHarness(config config.Config, configDir string) *DeepSeekHarness {
 	return &DeepSeekHarness{
 		config:    config,
 		configDir: configDir,
