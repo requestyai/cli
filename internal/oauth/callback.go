@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
@@ -151,12 +150,12 @@ func (s *callbackServer) handle(w http.ResponseWriter, r *http.Request) {
 // check comes first so that a response meant for another attempt, or forged
 // by a page that guessed the port, is never acted on.
 func (s *callbackServer) resolve(query url.Values) callbackResult {
-	if subtle.ConstantTimeCompare([]byte(query.Get("state")), []byte(s.state)) != 1 {
+	if query.Get("state") != s.state {
 		return callbackResult{err: errors.New("state mismatch: the response did not belong to this sign-in attempt")}
 	}
 
-	if code := query.Get("error"); code != "" {
-		return callbackResult{err: &Error{Code: code, Description: query.Get("error_description")}}
+	if err := query.Get("error"); err != "" {
+		return callbackResult{err: &Error{Code: err, Description: query.Get("error_description")}}
 	}
 
 	code := query.Get("code")
