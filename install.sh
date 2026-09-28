@@ -284,6 +284,15 @@ summary() {
 	action "$n. Start the CLI:"
 	action "   $(command_hint "$BINARY")"
 	action ""
+	n=$((n + 1))
+
+	action "$n. Launch a harness through Requesty:"
+	action "   $(command_hint "$BINARY claude")"
+	action "   $(command_hint "$BINARY codex")"
+	action "   $(command_hint "$BINARY opencode")"
+	action "   $(command_hint "$BINARY pi")"
+	action "   $(command_hint "$BINARY hermes")"
+	action ""
 	printf '\n'
 }
 
