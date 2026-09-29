@@ -135,3 +135,46 @@ func TestTomlStringQuotesForCodexOverrides(t *testing.T) {
 		assert.Equal(t, value, parsed.Value)
 	}
 }
+
+func TestCodexHarnessConfigureMergeDropsConflictingProviderAuth(t *testing.T) {
+	cfg := config.Config{
+		Name:          "work",
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "config.toml")
+	require.NoError(t, os.WriteFile(configPath, []byte(`
+model_provider = "requesty"
+
+[model_providers.requesty]
+name = "Requesty"
+base_url = "https://router.requesty.ai/v1"
+env_key = "OPENAI_API_KEY"
+experimental_bearer_token = "rqsty-sk-old"
+requires_openai_auth = true
+custom_provider_setting = "keep-me"
+`), 0o600))
+	harness := newCodexHarness(cfg, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "openai-responses/gpt-5.5",
+	}))
+
+	configBytes, err := os.ReadFile(configPath)
+	require.NoError(t, err)
+	var parsedConfig map[string]any
+	require.NoError(t, toml.Unmarshal(configBytes, &parsedConfig))
+	assert.Equal(t, map[string]any{
+		"name":                    "Requesty",
+		"base_url":                "https://router.requesty.ai/v1",
+		"custom_provider_setting": "keep-me",
+		"http_headers": map[string]any{
+			"X-Title": "OpenAI Codex",
+		},
+		"auth": map[string]any{
+			"command": "requesty",
+			"args":    []any{"auth", "token", "--profile", "work"},
+		},
+	}, parsedConfig["model_providers"].(map[string]any)[codexModelProvider])
+}

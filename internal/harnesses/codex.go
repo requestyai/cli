@@ -17,6 +17,10 @@ const (
 	codexModelProvider = "requesty"
 )
 
+// codexProviderAuthConflicts are provider keys Codex refuses alongside
+// `auth`.
+var codexProviderAuthConflicts = []string{"env_key", "experimental_bearer_token", "requires_openai_auth"}
+
 type codexConfig struct {
 	Model                           string `toml:"model"`
 	ModelProvider                   string `toml:"model_provider"`
@@ -152,6 +156,15 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 	})
 	if err != nil {
 		return fmt.Errorf("failed to merge config file: %w", err)
+	}
+
+	// Remove auth methods Codex refuses alongside our command-based auth.
+	if providers, ok := config["model_providers"].(map[string]any); ok {
+		if provider, ok := providers[codexModelProvider].(map[string]any); ok {
+			for _, key := range codexProviderAuthConflicts {
+				delete(provider, key)
+			}
+		}
 	}
 
 	if err := backupAndWriteConfigFileAsTOML(configPath, &config); err != nil {
