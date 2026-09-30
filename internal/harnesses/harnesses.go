@@ -1,8 +1,24 @@
 package harnesses
 
 import (
+	"strings"
+
 	"github.com/requestyai/cli/internal/config"
+	"github.com/requestyai/cli/internal/version"
 )
+
+// requestyClientHeader and requestyClientVersionHeader are sent on every
+// request from a harness the CLI set up or launched, so the router can tell
+// CLI traffic apart from harnesses configured by hand.
+const (
+	requestyClientHeader        = "X-Requesty-Client"
+	requestyClientVersionHeader = "X-Requesty-Client-Version"
+	requestyClientName          = "requesty-cli"
+)
+
+func requestyClientVersion() string {
+	return strings.TrimPrefix(version.Version, "v")
+}
 
 type Status struct {
 	Files      []string

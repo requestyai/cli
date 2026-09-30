@@ -5,6 +5,7 @@
 //   REQUESTY_API_KEY     the key for this profile
 //   REQUESTY_BASE_URL    the router, without a /v1 suffix
 //   REQUESTY_PI_CATALOG  a JSON file listing the models the profile can use
+//   REQUESTY_CLIENT_VERSION  the CLI version, sent as X-Requesty-Client-Version
 import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
@@ -47,6 +48,8 @@ export default function (pi: ExtensionAPI): void {
 		headers: {
 			"HTTP-Referer": "https://pi.dev",
 			"X-Title": "Pi",
+			"X-Requesty-Client": "requesty-cli",
+			"X-Requesty-Client-Version": trimmed(process.env.REQUESTY_CLIENT_VERSION) ?? "unknown",
 		},
 		models: loadCatalog(trimmed(process.env.REQUESTY_PI_CATALOG)),
 	});
