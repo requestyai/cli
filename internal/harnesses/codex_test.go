@@ -170,7 +170,8 @@ custom_provider_setting = "keep-me"
 		"base_url":                "https://router.requesty.ai/v1",
 		"custom_provider_setting": "keep-me",
 		"http_headers": map[string]any{
-			"X-Title": "OpenAI Codex",
+			"X-Title":           "OpenAI Codex",
+			"X-Requesty-Client": "requesty-cli/dev",
 		},
 		"auth": map[string]any{
 			"command": "requesty",

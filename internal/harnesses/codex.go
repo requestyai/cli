@@ -145,7 +145,8 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 				"name":     "Requesty",
 				"base_url": fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
 				"http_headers": map[string]any{
-					"X-Title": "OpenAI Codex",
+					"X-Title":            "OpenAI Codex",
+					requestyClientHeader: requestyClientHeaderValue(),
 				},
 				"auth": map[string]any{
 					"command": "requesty",
@@ -183,7 +184,8 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 				Name:    "Requesty",
 				BaseURL: fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
 				HTTPHeaders: map[string]string{
-					"X-Title": "OpenAI Codex",
+					"X-Title":            "OpenAI Codex",
+					requestyClientHeader: requestyClientHeaderValue(),
 				},
 				Auth: codexProviderAuth{
 					Command: "requesty",
@@ -232,6 +234,7 @@ func (c *CodexHarness) Launch(opts LaunchOptions) error {
 		"-c", provider + ".name=" + tomlString("Requesty"),
 		"-c", provider + ".base_url=" + tomlString(c.config.RouterBaseURL+"/v1"),
 		"-c", provider + ".http_headers.X-Title=" + tomlString("OpenAI Codex"),
+		"-c", provider + ".http_headers." + requestyClientHeader + "=" + tomlString(requestyClientHeaderValue()),
 		"-c", provider + ".auth.command=" + tomlString(requestyExecutable()),
 		"-c", provider + ".auth.args=[" + tomlString("auth") + "," + tomlString("token") + "," + tomlString("--profile") + "," + tomlString(c.config.Name) + "]",
 		"-c", "model_supports_reasoning_summaries=false",

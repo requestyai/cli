@@ -56,10 +56,6 @@ custom_providers:
 		"model": map[string]any{
 			"default":  "anthropic/claude-fable-5",
 			"provider": "requesty",
-			"default_headers": map[string]any{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 		"custom_providers": []any{
 			map[string]any{
@@ -72,6 +68,11 @@ custom_providers:
 				"base_url": "https://router.requesty.ai",
 				"api_key":  "my-api-key",
 				"api_mode": "anthropic_messages",
+				"extra_headers": map[string]any{
+					"HTTP-Referer":      "https://hermes-agent.nousresearch.com",
+					"X-Title":           "Hermes Agent",
+					"X-Requesty-Client": "requesty-cli/dev",
+				},
 			},
 		},
 	}, settings)
@@ -107,7 +108,12 @@ func TestHermesHarnessUpdatesExistingProvider(t *testing.T) {
 			"base_url": "https://router.eu.requesty.ai",
 			"api_key":  "my-new-api-key",
 			"api_mode": "anthropic_messages",
-			"timeout":  300,
+			"extra_headers": map[string]any{
+				"HTTP-Referer":      "https://hermes-agent.nousresearch.com",
+				"X-Title":           "Hermes Agent",
+				"X-Requesty-Client": "requesty-cli/dev",
+			},
+			"timeout": 300,
 		},
 	}, settings["custom_providers"])
 
@@ -139,10 +145,6 @@ func TestHermesHarnessConfigureCreatesMissingConfig(t *testing.T) {
 		"model": map[string]any{
 			"default":  "anthropic/claude-fable-5",
 			"provider": "requesty",
-			"default_headers": map[string]any{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 		"custom_providers": []any{
 			map[string]any{
@@ -150,6 +152,11 @@ func TestHermesHarnessConfigureCreatesMissingConfig(t *testing.T) {
 				"base_url": "https://router.requesty.ai",
 				"api_key":  "my-api-key",
 				"api_mode": "anthropic_messages",
+				"extra_headers": map[string]any{
+					"HTTP-Referer":      "https://hermes-agent.nousresearch.com",
+					"X-Title":           "Hermes Agent",
+					"X-Requesty-Client": "requesty-cli/dev",
+				},
 			},
 		},
 	}, settings)

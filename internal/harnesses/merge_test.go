@@ -79,7 +79,8 @@ custom_project_setting = "keep-me"
 			codexModelProvider: map[string]any{
 				"base_url": "https://router.requesty.ai/v1",
 				"http_headers": map[string]any{
-					"X-Title": "OpenAI Codex",
+					"X-Title":           "OpenAI Codex",
+					"X-Requesty-Client": "requesty-cli/dev",
 				},
 				"auth": map[string]any{
 					"command": "requesty",
@@ -102,8 +103,9 @@ custom_project_setting = "keep-me"
 				"custom_provider_setting": "keep-me",
 				"base_url":                "https://router.requesty.ai/v1",
 				"http_headers": map[string]any{
-					"Existing": "keep-me",
-					"X-Title":  "OpenAI Codex",
+					"Existing":          "keep-me",
+					"X-Title":           "OpenAI Codex",
+					"X-Requesty-Client": "requesty-cli/dev",
 				},
 				"auth": map[string]any{
 					"custom_auth_setting": "keep-me",

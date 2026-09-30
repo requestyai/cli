@@ -60,7 +60,8 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 				"apiKey": "my-api-key",
 				"headers": {
 					"HTTP-Referer": "https://pi.dev",
-					"X-Title": "Pi"
+					"X-Title": "Pi",
+					"X-Requesty-Client": "requesty-cli/dev"
 				},
 				"models": [
 					{"id": "anthropic/claude-fable-5"}
@@ -104,7 +105,8 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 				"apiKey": "my-api-key",
 				"headers": {
 					"HTTP-Referer": "https://pi.dev",
-					"X-Title": "Pi"
+					"X-Title": "Pi",
+					"X-Requesty-Client": "requesty-cli/dev"
 				},
 				"models": [
 					{"id": "anthropic/claude-fable-5"}

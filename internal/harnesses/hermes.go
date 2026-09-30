@@ -18,6 +18,9 @@ const (
 	// hermesAPIMode is the native Anthropic Messages format, which lets Requesty
 	// apply automatic prompt caching to Hermes' large system prompt.
 	hermesAPIMode = "anthropic_messages"
+
+	hermesReferer = "https://hermes-agent.nousresearch.com"
+	hermesTitle   = "Hermes Agent"
 )
 
 type hermesConfig struct {
@@ -26,16 +29,16 @@ type hermesConfig struct {
 }
 
 type hermesModel struct {
-	Default        string            `yaml:"default"`
-	Provider       string            `yaml:"provider"`
-	DefaultHeaders map[string]string `yaml:"default_headers,omitempty"`
+	Default  string `yaml:"default"`
+	Provider string `yaml:"provider"`
 }
 
 type hermesCustomProvider struct {
-	Name    string `yaml:"name"`
-	BaseURL string `yaml:"base_url"`
-	APIKey  string `yaml:"api_key"`
-	APIMode string `yaml:"api_mode"`
+	Name         string            `yaml:"name"`
+	BaseURL      string            `yaml:"base_url"`
+	APIKey       string            `yaml:"api_key"`
+	APIMode      string            `yaml:"api_mode"`
+	ExtraHeaders map[string]string `yaml:"extra_headers,omitempty"`
 }
 
 type HermesHarness struct {
@@ -243,10 +246,6 @@ func (h *HermesHarness) configureMerge(opts ConfigureOptions) error {
 		"model": map[string]any{
 			"default":  opts.Model,
 			"provider": hermesProvider,
-			"default_headers": map[string]any{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 	})
 	if err != nil {
@@ -273,17 +272,14 @@ func (h *HermesHarness) configureOverwrite(opts ConfigureOptions) error {
 		Model: hermesModel{
 			Default:  opts.Model,
 			Provider: hermesProvider,
-			DefaultHeaders: map[string]string{
-				"HTTP-Referer":   "https://hermes-agent.nousresearch.com",
-				"X-Origin-Title": "Hermes",
-			},
 		},
 		CustomProviders: []hermesCustomProvider{
 			{
-				Name:    hermesProvider,
-				BaseURL: h.config.RouterBaseURL,
-				APIKey:  h.config.APIKey,
-				APIMode: hermesAPIMode,
+				Name:         hermesProvider,
+				BaseURL:      h.config.RouterBaseURL,
+				APIKey:       h.config.APIKey,
+				APIMode:      hermesAPIMode,
+				ExtraHeaders: hermesExtraHeaders(),
 			},
 		},
 	}
@@ -298,11 +294,16 @@ func (h *HermesHarness) configureOverwrite(opts ConfigureOptions) error {
 // upsertCustomProvider replaces the Requesty entry in providers, appending it
 // when the user has not configured Requesty yet.
 func (h *HermesHarness) upsertCustomProvider(providers []any) []any {
+	extraHeaders := map[string]any{}
+	for key, value := range hermesExtraHeaders() {
+		extraHeaders[key] = value
+	}
 	provider := map[string]any{
-		"name":     hermesProvider,
-		"base_url": h.config.RouterBaseURL,
-		"api_key":  h.config.APIKey,
-		"api_mode": hermesAPIMode,
+		"name":          hermesProvider,
+		"base_url":      h.config.RouterBaseURL,
+		"api_key":       h.config.APIKey,
+		"api_mode":      hermesAPIMode,
+		"extra_headers": extraHeaders,
 	}
 
 	for i, existing := range providers {
@@ -342,4 +343,14 @@ func hermesCustomProviders(settings map[string]any) ([]any, error) {
 
 func (h *HermesHarness) configPath() string {
 	return filepath.Join(h.configDir, "config.yaml")
+}
+
+// hermesExtraHeaders go on the provider entry rather than in
+// model.default_headers, which Hermes ignores in anthropic_messages mode.
+func hermesExtraHeaders() map[string]string {
+	return map[string]string{
+		"HTTP-Referer":       hermesReferer,
+		"X-Title":            hermesTitle,
+		requestyClientHeader: requestyClientHeaderValue(),
+	}
 }
