@@ -71,9 +71,10 @@ llm-deepseek:
 					"defaultContextWindow": 200000,
 					"defaultMaxTokens":     8192,
 					"headers": map[string]any{
-						"HTTP-Referer":      "https://requesty.ai",
-						"X-Title":           "DeepSeek Harness",
-						"X-Requesty-Client": "requesty-cli/dev",
+						"HTTP-Referer":              "https://requesty.ai",
+						"X-Title":                   "DeepSeek Harness",
+						"X-Requesty-Client":         "requesty-cli",
+						"X-Requesty-Client-Version": "dev",
 					},
 					"models": []any{
 						map[string]any{"id": "deepseek/deepseek-v4-pro-0813"},
@@ -128,9 +129,10 @@ func TestDeepSeekHarnessConfigureCreatesMissingFiles(t *testing.T) {
 		DefaultContextWindow: 200000,
 		DefaultMaxTokens:     8192,
 		Headers: map[string]string{
-			"HTTP-Referer":      "https://requesty.ai",
-			"X-Title":           "DeepSeek Harness",
-			"X-Requesty-Client": "requesty-cli/dev",
+			"HTTP-Referer":              "https://requesty.ai",
+			"X-Title":                   "DeepSeek Harness",
+			"X-Requesty-Client":         "requesty-cli",
+			"X-Requesty-Client-Version": "dev",
 		},
 		Models: []deepseekModelConfig{
 			{ID: "anthropic/claude-fable-5"},

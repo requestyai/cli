@@ -169,8 +169,9 @@ func (o *OpenCodeHarness) inlineConfig(existing, model string) (string, error) {
 			"baseURL": o.baseURL(),
 			"apiKey":  "{env:REQUESTY_API_KEY}",
 			"headers": map[string]any{
-				"X-Title":            "OpenCode",
-				requestyClientHeader: requestyClientHeaderValue(),
+				"X-Title":                   "OpenCode",
+				requestyClientHeader:        requestyClientName,
+				requestyClientVersionHeader: requestyClientVersion(),
 			},
 		},
 	}
@@ -257,8 +258,9 @@ func (o *OpenCodeHarness) configureMerge(opts ConfigureOptions) error {
 					"baseURL": o.baseURL(),
 					"apiKey":  o.config.APIKey,
 					"headers": map[string]any{
-						"X-Title":            "OpenCode",
-						requestyClientHeader: requestyClientHeaderValue(),
+						"X-Title":                   "OpenCode",
+						requestyClientHeader:        requestyClientName,
+						requestyClientVersionHeader: requestyClientVersion(),
 					},
 				},
 			},
@@ -285,8 +287,9 @@ func (o *OpenCodeHarness) configureOverwrite(opts ConfigureOptions) error {
 					BaseURL: o.baseURL(),
 					APIKey:  o.config.APIKey,
 					Headers: map[string]string{
-						"X-Title":            "OpenCode",
-						requestyClientHeader: requestyClientHeaderValue(),
+						"X-Title":                   "OpenCode",
+						requestyClientHeader:        requestyClientName,
+						requestyClientVersionHeader: requestyClientVersion(),
 					},
 				},
 			},

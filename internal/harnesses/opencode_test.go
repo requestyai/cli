@@ -50,7 +50,7 @@ func TestOpenCodeHarnessRoundTrip(t *testing.T) {
 				"options": {
 					"baseURL": "https://router.requesty.ai/v1",
 					"apiKey": "my-api-key",
-					"headers": {"X-Title": "OpenCode", "X-Requesty-Client": "requesty-cli/dev"}
+					"headers": {"X-Title": "OpenCode", "X-Requesty-Client": "requesty-cli", "X-Requesty-Client-Version": "dev"}
 				}
 			}
 		}
@@ -80,7 +80,7 @@ func TestOpenCodeHarnessConfigureCreatesMissingConfig(t *testing.T) {
 				"options": {
 					"baseURL": "https://router.requesty.ai/v1",
 					"apiKey": "my-api-key",
-					"headers": {"X-Title": "OpenCode", "X-Requesty-Client": "requesty-cli/dev"}
+					"headers": {"X-Title": "OpenCode", "X-Requesty-Client": "requesty-cli", "X-Requesty-Client-Version": "dev"}
 				}
 			}
 		}

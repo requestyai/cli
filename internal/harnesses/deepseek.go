@@ -194,9 +194,10 @@ func (d *DeepSeekHarness) configureMerge(opts ConfigureOptions) error {
 					"defaultContextWindow": deepseekContextWindow,
 					"defaultMaxTokens":     deepseekMaxTokens,
 					"headers": map[string]any{
-						"HTTP-Referer":       "https://requesty.ai",
-						"X-Title":            "DeepSeek Harness",
-						requestyClientHeader: requestyClientHeaderValue(),
+						"HTTP-Referer":              "https://requesty.ai",
+						"X-Title":                   "DeepSeek Harness",
+						requestyClientHeader:        requestyClientName,
+						requestyClientVersionHeader: requestyClientVersion(),
 					},
 					"models": models,
 				},
@@ -234,9 +235,10 @@ func (d *DeepSeekHarness) configureOverwrite(opts ConfigureOptions) error {
 					DefaultContextWindow: deepseekContextWindow,
 					DefaultMaxTokens:     deepseekMaxTokens,
 					Headers: map[string]string{
-						"HTTP-Referer":       "https://requesty.ai",
-						"X-Title":            "DeepSeek Harness",
-						requestyClientHeader: requestyClientHeaderValue(),
+						"HTTP-Referer":              "https://requesty.ai",
+						"X-Title":                   "DeepSeek Harness",
+						requestyClientHeader:        requestyClientName,
+						requestyClientVersionHeader: requestyClientVersion(),
 					},
 					Models: []deepseekModelConfig{
 						{ID: opts.Model},

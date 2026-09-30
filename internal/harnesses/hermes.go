@@ -349,8 +349,9 @@ func (h *HermesHarness) configPath() string {
 // model.default_headers, which Hermes ignores in anthropic_messages mode.
 func hermesExtraHeaders() map[string]string {
 	return map[string]string{
-		"HTTP-Referer":       hermesReferer,
-		"X-Title":            hermesTitle,
-		requestyClientHeader: requestyClientHeaderValue(),
+		"HTTP-Referer":              hermesReferer,
+		"X-Title":                   hermesTitle,
+		requestyClientHeader:        requestyClientName,
+		requestyClientVersionHeader: requestyClientVersion(),
 	}
 }

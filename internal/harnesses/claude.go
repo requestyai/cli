@@ -126,7 +126,7 @@ func (c *ClaudeHarness) configureMerge(opts ConfigureOptions) error {
 		return fmt.Errorf("failed to merge settings file: env is not an object")
 	}
 	existingHeaders, _ := env["ANTHROPIC_CUSTOM_HEADERS"].(string)
-	env["ANTHROPIC_CUSTOM_HEADERS"] = withRequestyClientHeader(existingHeaders)
+	env["ANTHROPIC_CUSTOM_HEADERS"] = withRequestyClientHeaders(existingHeaders)
 
 	if err := backupAndWriteConfigFileAsJSON(settingsPath, &settings); err != nil {
 		return fmt.Errorf("failed to write settings file: %w", err)
@@ -140,7 +140,7 @@ func (c *ClaudeHarness) configureOverwrite(opts ConfigureOptions) error {
 	settings.Env.AnthropicBaseURL = c.config.RouterBaseURL
 	settings.Env.AnthropicAuthToken = c.config.APIKey
 	settings.Env.AnthropicModel = opts.Model
-	settings.Env.AnthropicCustomHeaders = withRequestyClientHeader("")
+	settings.Env.AnthropicCustomHeaders = withRequestyClientHeaders("")
 
 	if err := backupAndWriteConfigFileAsJSON(c.settingsPath(), &settings); err != nil {
 		return fmt.Errorf("failed to write settings file: %w", err)
@@ -198,7 +198,7 @@ func (c *ClaudeHarness) Launch(opts LaunchOptions) error {
 	env["ANTHROPIC_BASE_URL"] = c.config.RouterBaseURL
 	env["ANTHROPIC_API_KEY"] = c.config.APIKey
 	env["REQUESTY_API_KEY"] = c.config.APIKey
-	env["ANTHROPIC_CUSTOM_HEADERS"] = withRequestyClientHeader(env["ANTHROPIC_CUSTOM_HEADERS"])
+	env["ANTHROPIC_CUSTOM_HEADERS"] = withRequestyClientHeaders(env["ANTHROPIC_CUSTOM_HEADERS"])
 	delete(env, "ANTHROPIC_AUTH_TOKEN")
 	// The fast-mode check calls an Anthropic-only org endpoint that a gateway
 	// cannot answer; skipping it avoids a startup warning.
@@ -267,19 +267,23 @@ func hasAnyFlag(args []string, flags []string) bool {
 	return false
 }
 
-// withRequestyClientHeader adds the Requesty client header to headers, a
+// withRequestyClientHeaders adds the Requesty client headers to headers, a
 // newline-separated list of `Name: Value` lines as ANTHROPIC_CUSTOM_HEADERS
-// expects, replacing any earlier value and keeping the user's other headers.
-func withRequestyClientHeader(headers string) string {
+// expects, replacing any earlier values and keeping the user's other headers.
+func withRequestyClientHeaders(headers string) string {
 	lines := []string{}
 	for _, line := range strings.Split(headers, "\n") {
 		name, _, _ := strings.Cut(line, ":")
-		if strings.TrimSpace(line) == "" || strings.EqualFold(strings.TrimSpace(name), requestyClientHeader) {
+		name = strings.TrimSpace(name)
+		if strings.TrimSpace(line) == "" || strings.EqualFold(name, requestyClientHeader) || strings.EqualFold(name, requestyClientVersionHeader) {
 			continue
 		}
 		lines = append(lines, line)
 	}
-	lines = append(lines, requestyClientHeader+": "+requestyClientHeaderValue())
+	lines = append(lines,
+		requestyClientHeader+": "+requestyClientName,
+		requestyClientVersionHeader+": "+requestyClientVersion(),
+	)
 
 	return strings.Join(lines, "\n")
 }
