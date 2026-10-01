@@ -62,7 +62,7 @@ func mustParseTime(t *testing.T, value string) *time.Time {
 
 func TestClientAPIKeys(t *testing.T) {
 	reply := `{"keys":[{"id":"key-1","name":"production","monthly_limit":"500","monthly_spend":"12.5",` +
-		`"expires_at":"2026-12-31T23:59:59Z",` +
+		`"expires_at":"2026-12-31T23:59:59Z","created_at":"2026-01-15T10:30:00Z",` +
 		`"permissions":{"manage":"read","completions":"write"},"labels":{"env":"prod"},` +
 		`"created_by":{"id":"user-1","email":"you@example.com"},"group":{"id":"group-1"}}]}`
 	client, seen := newTestClient(t, http.StatusOK, reply)
@@ -79,6 +79,7 @@ func TestClientAPIKeys(t *testing.T) {
 		MonthlyLimit: decimal.RequireFromString("500"),
 		MonthlySpend: decimal.RequireFromString("12.5"),
 		ExpiresAt:    mustParseTime(t, "2026-12-31T23:59:59Z"),
+		CreatedAt:    time.Date(2026, time.January, 15, 10, 30, 0, 0, time.UTC),
 		Permissions:  APIKeyPermissions{Manage: APIKeyPermissionRead, Completions: APIKeyPermissionWrite},
 		Labels:       map[string]string{"env": "prod"},
 		CreatedBy:    &APIKeyUser{ID: "user-1", Email: "you@example.com"},
@@ -88,7 +89,7 @@ func TestClientAPIKeys(t *testing.T) {
 
 func TestClientAPIKey(t *testing.T) {
 	reply := `{"id":"key-1","name":"production","logging":true,"monthly_limit":"0","monthly_spend":"3",` +
-		`"expires_at":"2026-12-31T23:59:59Z",` +
+		`"expires_at":"2026-12-31T23:59:59Z","created_at":"2026-01-15T10:30:00Z",` +
 		`"permissions":{"manage":"none","completions":"write"},"group":{"id":"group-1"}}`
 	client, seen := newTestClient(t, http.StatusOK, reply)
 
@@ -104,6 +105,7 @@ func TestClientAPIKey(t *testing.T) {
 		MonthlyLimit: decimal.RequireFromString("0"),
 		MonthlySpend: decimal.RequireFromString("3"),
 		ExpiresAt:    mustParseTime(t, "2026-12-31T23:59:59Z"),
+		CreatedAt:    time.Date(2026, time.January, 15, 10, 30, 0, 0, time.UTC),
 		Permissions:  APIKeyPermissions{Manage: APIKeyPermissionNone, Completions: APIKeyPermissionWrite},
 		Group:        &APIKeyGroup{ID: "group-1"},
 	}, key)

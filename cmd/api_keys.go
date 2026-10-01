@@ -76,11 +76,12 @@ func newAPIKeysListCommand(env *environment) *cobra.Command {
 					formatMoney(key.MonthlySpend),
 					formatLimit(key.MonthlyLimit),
 					formatExpiry(key.ExpiresAt),
+					formatDate(key.CreatedAt),
 					formatLabels(key.Labels),
 				})
 			}
 
-			return writeTable(out, []string{"ID", "NAME", "SPEND", "LIMIT", "EXPIRES", "LABELS"}, rows)
+			return writeTable(out, []string{"ID", "NAME", "SPEND", "LIMIT", "EXPIRES", "CREATED", "LABELS"}, rows)
 		},
 	}
 }
@@ -115,6 +116,7 @@ func newAPIKeysShowCommand(env *environment) *cobra.Command {
 				{"Spend this month", formatMoney(key.MonthlySpend)},
 				{"Monthly limit", formatLimit(key.MonthlyLimit)},
 				{"Expires", formatExpiry(key.ExpiresAt)},
+				{"Created at", formatTime(key.CreatedAt)},
 				{"Permissions", formatPermissions(key.Permissions)},
 				{"Logging", strconv.FormatBool(key.Logging)},
 				{"Group", formatGroup(key.Group)},

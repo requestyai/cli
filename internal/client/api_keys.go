@@ -46,6 +46,7 @@ type APIKey struct {
 	MonthlyLimit decimal.Decimal   `json:"monthly_limit"`
 	MonthlySpend decimal.Decimal   `json:"monthly_spend"`
 	ExpiresAt    *time.Time        `json:"expires_at,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
 	Permissions  APIKeyPermissions `json:"permissions"`
 	Labels       map[string]string `json:"labels,omitempty"`
 	CreatedBy    *APIKeyUser       `json:"created_by,omitempty"`
@@ -61,6 +62,7 @@ type APIKeyDetails struct {
 	MonthlyLimit decimal.Decimal   `json:"monthly_limit"`
 	MonthlySpend decimal.Decimal   `json:"monthly_spend"`
 	ExpiresAt    *time.Time        `json:"expires_at,omitempty"`
+	CreatedAt    time.Time         `json:"created_at"`
 	Permissions  APIKeyPermissions `json:"permissions"`
 	Group        *APIKeyGroup      `json:"group,omitempty"`
 }
