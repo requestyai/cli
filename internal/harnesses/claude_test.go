@@ -59,7 +59,36 @@ func TestClaudeHarnessConfigureCreatesMissingConfig(t *testing.T) {
 		"env": {
 			"ANTHROPIC_BASE_URL": "https://router.requesty.ai",
 			"ANTHROPIC_AUTH_TOKEN": "my-api-key",
-			"ANTHROPIC_MODEL": "anthropic/claude-fable-5"
+			"ANTHROPIC_MODEL": "anthropic/claude-fable-5",
+			"ANTHROPIC_CUSTOM_HEADERS": "X-Requesty-Client: requesty-cli\nX-Requesty-Client-Version: dev"
+		}
+	}`, string(settings))
+}
+
+func TestClaudeHarnessConfigureKeepsCustomHeaders(t *testing.T) {
+	config := config.Config{
+		RouterBaseURL: "https://router.requesty.ai",
+		APIKey:        "my-api-key",
+	}
+	configDir := t.TempDir()
+	settingsPath := filepath.Join(configDir, "settings.json")
+	require.NoError(t, os.WriteFile(settingsPath, []byte(`{
+		"env": {"ANTHROPIC_CUSTOM_HEADERS": "X-Team: platform\nX-Requesty-Client-Version: 0.0.1\nX-Requesty-Client: requesty-cli"}
+	}`), 0o600))
+	harness := newClaudeHarness(config, configDir)
+
+	require.NoError(t, harness.Configure(ConfigureOptions{
+		Model: "anthropic/claude-fable-5",
+	}))
+
+	settings, err := os.ReadFile(settingsPath)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"env": {
+			"ANTHROPIC_BASE_URL": "https://router.requesty.ai",
+			"ANTHROPIC_AUTH_TOKEN": "my-api-key",
+			"ANTHROPIC_MODEL": "anthropic/claude-fable-5",
+			"ANTHROPIC_CUSTOM_HEADERS": "X-Team: platform\nX-Requesty-Client: requesty-cli\nX-Requesty-Client-Version: dev"
 		}
 	}`, string(settings))
 }
