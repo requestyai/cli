@@ -1,6 +1,8 @@
 package harnesses
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,9 +12,23 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// newPiModelsServer is a router whose model list is body.
+func newPiModelsServer(t *testing.T, status int, body string) *httptest.Server {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(server.Close)
+
+	return server
+}
+
 func TestPiHarnessRoundTrip(t *testing.T) {
+	server := newPiModelsServer(t, http.StatusOK, `{"data": [
+		{"id": "anthropic/claude-fable-5", "context_window": 1000000, "max_output_tokens": 64000}
+	]}`)
 	config := config.Config{
-		RouterBaseURL: "https://router.requesty.ai",
+		RouterBaseURL: server.URL,
 		APIKey:        "my-api-key",
 	}
 
@@ -55,7 +71,7 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 			"other": {"name": "Other provider"},
 			"requesty": {
 				"name": "Requesty",
-				"baseUrl": "https://router.requesty.ai",
+				"baseUrl": "`+server.URL+`",
 				"api": "anthropic-messages",
 				"apiKey": "my-api-key",
 				"headers": {
@@ -63,7 +79,7 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 					"X-Title": "Pi"
 				},
 				"models": [
-					{"id": "anthropic/claude-fable-5"}
+					{"id": "anthropic/claude-fable-5", "contextWindow": 1000000, "maxTokens": 64000}
 				]
 			}
 		}
@@ -80,8 +96,9 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 }
 
 func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
+	server := newPiModelsServer(t, http.StatusInternalServerError, "")
 	config := config.Config{
-		RouterBaseURL: "https://router.requesty.ai",
+		RouterBaseURL: server.URL,
 		APIKey:        "my-api-key",
 	}
 	configDir := t.TempDir()
@@ -99,7 +116,7 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 		"providers": {
 			"requesty": {
 				"name": "Requesty",
-				"baseUrl": "https://router.requesty.ai",
+				"baseUrl": "`+server.URL+`",
 				"api": "anthropic-messages",
 				"apiKey": "my-api-key",
 				"headers": {
@@ -107,7 +124,7 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 					"X-Title": "Pi"
 				},
 				"models": [
-					{"id": "anthropic/claude-fable-5"}
+					{"id": "anthropic/claude-fable-5", "contextWindow": 200000, "maxTokens": 8192}
 				]
 			}
 		}

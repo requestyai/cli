@@ -46,7 +46,9 @@ type piProviderConfig struct {
 }
 
 type piModelConfig struct {
-	ID string `json:"id"`
+	ID            string `json:"id"`
+	ContextWindow int    `json:"contextWindow"`
+	MaxTokens     int    `json:"maxTokens"`
 }
 
 type PiHarness struct {
@@ -402,7 +404,7 @@ func (p *PiHarness) configureMerge(opts ConfigureOptions) error {
 					"X-Title":      "Pi",
 				},
 				"models": []any{
-					map[string]any{"id": opts.Model},
+					p.modelConfig(opts.Model),
 				},
 			},
 		},
@@ -445,7 +447,7 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 					"X-Title":      "Pi",
 				},
 				Models: []piModelConfig{
-					{ID: opts.Model},
+					p.modelConfig(opts.Model),
 				},
 			},
 		},
@@ -466,6 +468,34 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 	}
 
 	return nil
+}
+
+// modelConfig describes model in models.json with the capacities the model
+// list reports, since Pi caps a model without them at 128k tokens. When the
+// list cannot be fetched, the launch defaults stand in.
+func (p *PiHarness) modelConfig(model string) piModelConfig {
+	config := piModelConfig{
+		ID:            model,
+		ContextWindow: piCatalogContextWindow,
+		MaxTokens:     piCatalogMaxTokens,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), piCatalogTimeout)
+	defer cancel()
+
+	catalog, err := p.fetchCatalog(ctx)
+	if err != nil {
+		return config
+	}
+
+	index := slices.IndexFunc(catalog.Models, func(m piCatalogModel) bool { return m.ID == model })
+	if index < 0 {
+		return config
+	}
+	config.ContextWindow = catalog.Models[index].ContextWindow
+	config.MaxTokens = catalog.Models[index].MaxTokens
+
+	return config
 }
 
 func (p *PiHarness) modelsPath() string {
