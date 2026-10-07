@@ -254,7 +254,10 @@ func (m integrationState) updateModelStep(msg tea.KeyPressMsg) (integrationState
 		if m.wizard.modelsErr == nil &&
 			len(models) > 0 &&
 			m.cursor < len(m.items) {
-			m.wizard.options.Model = models[m.wizard.modelCursor].ID
+			model := models[m.wizard.modelCursor]
+			m.wizard.options.Model = model.ID
+			m.wizard.options.ContextWindow = model.ContextWindow
+			m.wizard.options.MaxOutputTokens = model.MaxOutputTokens
 			m.wizard.step = integrationModeWizardStep
 			m.wizard.modeCursor = 0
 			m.wizard.configureErr = nil
@@ -292,6 +295,8 @@ func (m integrationState) updateModeStep(msg tea.KeyPressMsg) (integrationState,
 	case "esc":
 		m.wizard.step = integrationModelWizardStep
 		m.wizard.options.Model = ""
+		m.wizard.options.ContextWindow = 0
+		m.wizard.options.MaxOutputTokens = 0
 		m.wizard.modeCursor = 0
 		m.wizard.configureErr = nil
 	case "up", "k":

@@ -1,8 +1,6 @@
 package harnesses
 
 import (
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,23 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newPiModelsServer is a router whose model list is body.
-func newPiModelsServer(t *testing.T, status int, body string) *httptest.Server {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(status)
-		_, _ = w.Write([]byte(body))
-	}))
-	t.Cleanup(server.Close)
-
-	return server
-}
-
 func TestPiHarnessRoundTrip(t *testing.T) {
-	server := newPiModelsServer(t, http.StatusOK, `{"data": [
-		{"id": "anthropic/claude-fable-5", "context_window": 1000000, "max_output_tokens": 64000}
-	]}`)
 	config := config.Config{
-		RouterBaseURL: server.URL,
+		RouterBaseURL: "https://router.requesty.ai",
 		APIKey:        "my-api-key",
 	}
 
@@ -55,7 +39,9 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 
 	// Configure the machine.
 	err = harness.Configure(ConfigureOptions{
-		Model: "anthropic/claude-fable-5",
+		Model:           "anthropic/claude-fable-5",
+		ContextWindow:   1_000_000,
+		MaxOutputTokens: 64_000,
 	})
 	require.NoError(t, err)
 
@@ -71,7 +57,7 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 			"other": {"name": "Other provider"},
 			"requesty": {
 				"name": "Requesty",
-				"baseUrl": "`+server.URL+`",
+				"baseUrl": "https://router.requesty.ai",
 				"api": "anthropic-messages",
 				"apiKey": "my-api-key",
 				"headers": {
@@ -96,9 +82,8 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 }
 
 func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
-	server := newPiModelsServer(t, http.StatusInternalServerError, "")
 	config := config.Config{
-		RouterBaseURL: server.URL,
+		RouterBaseURL: "https://router.requesty.ai",
 		APIKey:        "my-api-key",
 	}
 	configDir := t.TempDir()
@@ -116,7 +101,7 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 		"providers": {
 			"requesty": {
 				"name": "Requesty",
-				"baseUrl": "`+server.URL+`",
+				"baseUrl": "https://router.requesty.ai",
 				"api": "anthropic-messages",
 				"apiKey": "my-api-key",
 				"headers": {
