@@ -15,9 +15,10 @@ import (
 
 type claudeSettings struct {
 	Env struct {
-		AnthropicBaseURL   string `json:"ANTHROPIC_BASE_URL"`
-		AnthropicAuthToken string `json:"ANTHROPIC_AUTH_TOKEN"`
-		AnthropicModel     string `json:"ANTHROPIC_MODEL"`
+		AnthropicBaseURL       string `json:"ANTHROPIC_BASE_URL"`
+		AnthropicAuthToken     string `json:"ANTHROPIC_AUTH_TOKEN"`
+		AnthropicModel         string `json:"ANTHROPIC_MODEL"`
+		AnthropicCustomHeaders string `json:"ANTHROPIC_CUSTOM_HEADERS,omitempty"`
 	} `json:"env"`
 }
 
@@ -120,6 +121,13 @@ func (c *ClaudeHarness) configureMerge(opts ConfigureOptions) error {
 		return fmt.Errorf("failed to merge settings file: %w", err)
 	}
 
+	env, ok := settings["env"].(map[string]any)
+	if !ok {
+		return fmt.Errorf("failed to merge settings file: env is not an object")
+	}
+	existingHeaders, _ := env["ANTHROPIC_CUSTOM_HEADERS"].(string)
+	env["ANTHROPIC_CUSTOM_HEADERS"] = withRequestyClientHeaders(existingHeaders)
+
 	if err := backupAndWriteConfigFileAsJSON(settingsPath, &settings); err != nil {
 		return fmt.Errorf("failed to write settings file: %w", err)
 	}
@@ -132,6 +140,7 @@ func (c *ClaudeHarness) configureOverwrite(opts ConfigureOptions) error {
 	settings.Env.AnthropicBaseURL = c.config.RouterBaseURL
 	settings.Env.AnthropicAuthToken = c.config.APIKey
 	settings.Env.AnthropicModel = opts.Model
+	settings.Env.AnthropicCustomHeaders = withRequestyClientHeaders("")
 
 	if err := backupAndWriteConfigFileAsJSON(c.settingsPath(), &settings); err != nil {
 		return fmt.Errorf("failed to write settings file: %w", err)
@@ -189,6 +198,7 @@ func (c *ClaudeHarness) Launch(opts LaunchOptions) error {
 	env["ANTHROPIC_BASE_URL"] = c.config.RouterBaseURL
 	env["ANTHROPIC_API_KEY"] = c.config.APIKey
 	env["REQUESTY_API_KEY"] = c.config.APIKey
+	env["ANTHROPIC_CUSTOM_HEADERS"] = withRequestyClientHeaders(env["ANTHROPIC_CUSTOM_HEADERS"])
 	delete(env, "ANTHROPIC_AUTH_TOKEN")
 	// The fast-mode check calls an Anthropic-only org endpoint that a gateway
 	// cannot answer; skipping it avoids a startup warning.
@@ -255,4 +265,25 @@ func hasAnyFlag(args []string, flags []string) bool {
 	}
 
 	return false
+}
+
+// withRequestyClientHeaders adds the Requesty client headers to headers, a
+// newline-separated list of `Name: Value` lines as ANTHROPIC_CUSTOM_HEADERS
+// expects, replacing any earlier values and keeping the user's other headers.
+func withRequestyClientHeaders(headers string) string {
+	lines := []string{}
+	for _, line := range strings.Split(headers, "\n") {
+		name, _, _ := strings.Cut(line, ":")
+		name = strings.TrimSpace(name)
+		if strings.TrimSpace(line) == "" || strings.EqualFold(name, requestyClientHeader) || strings.EqualFold(name, requestyClientVersionHeader) {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	lines = append(lines,
+		requestyClientHeader+": "+requestyClientName,
+		requestyClientVersionHeader+": "+requestyClientVersion(),
+	)
+
+	return strings.Join(lines, "\n")
 }

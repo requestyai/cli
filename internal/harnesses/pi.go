@@ -261,6 +261,7 @@ func (p *PiHarness) Launch(opts LaunchOptions) error {
 	env["REQUESTY_API_KEY"] = p.config.APIKey
 	env["REQUESTY_BASE_URL"] = p.config.RouterBaseURL
 	env["REQUESTY_PI_CATALOG"] = catalogPath
+	env["REQUESTY_CLIENT_VERSION"] = requestyClientVersion()
 
 	argv := []string{"pi", "--extension", extensionPath}
 	switch {
@@ -398,8 +399,10 @@ func (p *PiHarness) configureMerge(opts ConfigureOptions) error {
 				"api":     piAPI,
 				"apiKey":  p.config.APIKey,
 				"headers": map[string]any{
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title":      "Pi",
+					"HTTP-Referer":              "https://pi.dev",
+					"X-Title":                   "Pi",
+					requestyClientHeader:        requestyClientName,
+					requestyClientVersionHeader: requestyClientVersion(),
 				},
 				"models": []any{
 					map[string]any{"id": opts.Model},
@@ -441,8 +444,10 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 				API:     piAPI,
 				APIKey:  p.config.APIKey,
 				Headers: map[string]string{
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title":      "Pi",
+					"HTTP-Referer":              "https://pi.dev",
+					"X-Title":                   "Pi",
+					requestyClientHeader:        requestyClientName,
+					requestyClientVersionHeader: requestyClientVersion(),
 				},
 				Models: []piModelConfig{
 					{ID: opts.Model},
