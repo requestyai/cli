@@ -1,6 +1,7 @@
-// Package modelpicker is the full-screen dialog that asks which model a
-// harness should launch with. It lists the managed policies the profile can
-// route to on one tab and every model on another.
+// Package modelpicker is the dialog that asks which model a harness should
+// use. It lists the managed policies the profile can route to on one tab and
+// every model on another. Run shows it full screen on its own; Picker embeds
+// it in another program, such as the dashboard's configure wizard.
 package modelpicker
 
 import (
@@ -38,7 +39,17 @@ type Options struct {
 	Preferred []string
 	// Confirm always shows the dialog, for when the user asked to choose.
 	Confirm bool
+	// Action names what enter does in the footer. Empty means "launch".
+	Action string
 }
+
+// ChosenMsg reports that a model was chosen in a Picker.
+type ChosenMsg struct {
+	ID string
+}
+
+// CancelledMsg reports that a Picker was closed without choosing.
+type CancelledMsg struct{}
 
 // Run returns the model to launch with. Unless Confirm is set, the first of
 // Preferred that the profile can route to is returned without asking, and
@@ -51,12 +62,12 @@ func Run(ctx context.Context, opts Options) (chosen string, asked bool, err erro
 		}
 	}
 
-	final, err := tea.NewProgram(newModel(ctx, opts), tea.WithContext(ctx), tea.WithOutput(os.Stderr)).Run()
+	final, err := tea.NewProgram(newProgram(ctx, opts), tea.WithContext(ctx), tea.WithOutput(os.Stderr)).Run()
 	if err != nil {
 		return "", true, fmt.Errorf("failed to run model picker: %w", err)
 	}
 
-	finished, ok := final.(model)
+	finished, ok := final.(program)
 	if !ok || finished.chosen == "" {
 		return "", true, ErrCancelled
 	}
@@ -103,6 +114,53 @@ const (
 
 var frame = lipgloss.NewStyle().Padding(framePadY, framePadX)
 
+// program is the full-screen dialog Run shows: a Picker centred in the
+// terminal, quitting once it reports a choice or a cancel.
+type program struct {
+	picker Picker
+	width  int
+	height int
+	chosen string
+}
+
+func newProgram(ctx context.Context, opts Options) program {
+	return program{picker: New(ctx, opts), width: defaultWidth, height: defaultHeight}
+}
+
+func (p program) Init() tea.Cmd {
+	return p.picker.Init()
+}
+
+func (p program) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch typedMsg := msg.(type) {
+	case tea.WindowSizeMsg:
+		p.width = max(typedMsg.Width-2*framePadX, 0)
+		p.height = max(typedMsg.Height-2*framePadY, 0)
+		return p, nil
+	case ChosenMsg:
+		p.chosen = typedMsg.ID
+		return p, tea.Quit
+	case CancelledMsg:
+		return p, tea.Quit
+	case tea.KeyPressMsg:
+		if typedMsg.String() == "ctrl+c" {
+			return p, tea.Quit
+		}
+	}
+
+	var cmd tea.Cmd
+	p.picker, cmd = p.picker.Update(msg)
+
+	return p, cmd
+}
+
+func (p program) View() tea.View {
+	view := tea.NewView(frame.Render(p.picker.View(p.width, p.height)))
+	view.AltScreen = true
+
+	return view
+}
+
 type tab uint8
 
 const (
@@ -141,19 +199,19 @@ type loadedMsg struct {
 	err    error
 }
 
-type model struct {
+// Picker is the dialog as a component: the host forwards it messages, draws
+// its View, and is told the outcome through ChosenMsg or CancelledMsg.
+type Picker struct {
 	ctx    context.Context
 	opts   Options
 	lists  [tabCount]list
 	tab    tab
 	cursor int
 	search textinput.Model
-	width  int
-	height int
-	chosen string
 }
 
-func newModel(ctx context.Context, opts Options) model {
+// New returns a Picker; its Init starts loading both lists.
+func New(ctx context.Context, opts Options) Picker {
 	search := textinput.New()
 	search.Prompt = "Search: "
 	search.Placeholder = "type to filter"
@@ -162,20 +220,18 @@ func newModel(ctx context.Context, opts Options) model {
 	// discard here; what matters is that the box is ready to type into.
 	search.Focus()
 
-	return model{
+	return Picker{
 		ctx:    ctx,
 		opts:   opts,
 		search: search,
-		width:  defaultWidth,
-		height: defaultHeight,
 	}
 }
 
-func (m model) Init() tea.Cmd {
+func (m Picker) Init() tea.Cmd {
 	return tea.Batch(m.load(tabPolicies), m.load(tabModels), textinput.Blink)
 }
 
-func (m model) load(t tab) tea.Cmd {
+func (m Picker) load(t tab) tea.Cmd {
 	ctx, apiClient := m.ctx, m.opts.Client
 	return func() tea.Msg {
 		var models []client.Model
@@ -192,12 +248,8 @@ func (m model) load(t tab) tea.Cmd {
 	}
 }
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Picker) Update(msg tea.Msg) (Picker, tea.Cmd) {
 	switch typedMsg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = max(typedMsg.Width-2*framePadX, 0)
-		m.height = max(typedMsg.Height-2*framePadY, 0)
-
 	case loadedMsg:
 		m.lists[typedMsg.tab] = list{models: typedMsg.models, loaded: true, err: typedMsg.err}
 		// Someone with no managed policies, or whose list failed to load,
@@ -216,10 +268,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m model) updateKey(msg tea.KeyPressMsg) (model, tea.Cmd) {
+func (m Picker) updateKey(msg tea.KeyPressMsg) (Picker, tea.Cmd) {
 	switch msg.String() {
-	case "ctrl+c", "esc":
-		return m, tea.Quit
+	case "esc":
+		return m, func() tea.Msg { return CancelledMsg{} }
 	case "tab", "shift+tab":
 		m.tab = (m.tab + 1) % tabCount
 		m.cursor = m.preselectedCursor()
@@ -233,8 +285,8 @@ func (m model) updateKey(msg tea.KeyPressMsg) (model, tea.Cmd) {
 		}
 	case "enter":
 		if filtered := m.filtered(); len(filtered) > 0 {
-			m.chosen = filtered[m.cursor].ID
-			return m, tea.Quit
+			chosen := filtered[m.cursor].ID
+			return m, func() tea.Msg { return ChosenMsg{ID: chosen} }
 		}
 	default:
 		previous := m.search.Value()
@@ -250,7 +302,7 @@ func (m model) updateKey(msg tea.KeyPressMsg) (model, tea.Cmd) {
 }
 
 // filtered is the current tab's list narrowed by the search box.
-func (m model) filtered() []client.Model {
+func (m Picker) filtered() []client.Model {
 	models := m.lists[m.tab].models
 	query := strings.ToLower(strings.TrimSpace(m.search.Value()))
 	if query == "" {
@@ -269,7 +321,7 @@ func (m model) filtered() []client.Model {
 
 // preselectedCursor is where the cursor goes on a fresh list: on the first of
 // Preferred that is there, else the top.
-func (m model) preselectedCursor() int {
+func (m Picker) preselectedCursor() int {
 	filtered := m.filtered()
 	for _, id := range m.opts.Preferred {
 		if i := slices.IndexFunc(filtered, func(m client.Model) bool { return m.ID == id }); i >= 0 {
@@ -280,8 +332,9 @@ func (m model) preselectedCursor() int {
 	return 0
 }
 
-func (m model) View() tea.View {
-	inner := max(min(m.width-8, maxWidth), minWidth)
+// View draws the dialog centred in width by height.
+func (m Picker) View(width, height int) string {
+	inner := max(min(width-8, maxWidth), minWidth)
 	m.search.SetWidth(inner - lipgloss.Width(m.search.Prompt))
 
 	lines := []string{
@@ -292,24 +345,30 @@ func (m model) View() tea.View {
 		text.LineSeparator,
 		m.search.View(),
 		text.LineSeparator,
-		m.body(inner),
+		m.body(inner, height),
 		text.LineSeparator,
 		text.RenderFooterHintList(inner,
 			[2]string{"tab", "switch list"},
 			[2]string{"↑/↓", "move"},
-			[2]string{"enter", "launch"},
+			[2]string{"enter", m.action()},
 			[2]string{"esc", "cancel"},
 		),
 	}
 
 	panel := theme.Panel.Render(lipgloss.JoinVertical(lipgloss.Left, lines...))
-	view := tea.NewView(frame.Render(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, panel)))
-	view.AltScreen = true
 
-	return view
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, panel)
 }
 
-func (m model) tabs() string {
+func (m Picker) action() string {
+	if m.opts.Action == "" {
+		return "launch"
+	}
+
+	return m.opts.Action
+}
+
+func (m Picker) tabs() string {
 	pills := make([]string, 0, tabCount)
 	for t := tabPolicies; t < tabCount; t++ {
 		label := t.title()
@@ -326,7 +385,7 @@ func (m model) tabs() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, pills...)
 }
 
-func (m model) body(inner int) string {
+func (m Picker) body(inner, height int) string {
 	current := m.lists[m.tab]
 	filtered := m.filtered()
 	switch {
@@ -359,7 +418,7 @@ func (m model) body(inner int) string {
 		},
 		Rows:   rows,
 		Cursor: m.cursor,
-		Height: max(min(m.height-chromeRows, maxRows), minRows),
+		Height: max(min(height-chromeRows, maxRows), minRows),
 		Style:  table.CellStyle(m.cursor),
 	}.Render()
 }
