@@ -6,12 +6,12 @@ import (
 	"slices"
 	"strings"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/requestyai/cli/internal/client"
 	"github.com/requestyai/cli/internal/config"
 	"github.com/requestyai/cli/internal/harnesses"
+	"github.com/requestyai/cli/internal/modelpicker"
 	"github.com/requestyai/cli/internal/tui/theme"
 	"github.com/requestyai/cli/internal/tui/ui/table"
 	"github.com/requestyai/cli/internal/tui/ui/text"
@@ -35,13 +35,10 @@ type integrationWizardState struct {
 	open bool
 	step integrationWizardStep
 
-	options     harnesses.ConfigureOptions
-	models      []client.Model
-	modelCursor int
-	modelSearch textinput.Model
-	modeCursor  int
+	options    harnesses.ConfigureOptions
+	picker     modelpicker.Picker
+	modeCursor int
 
-	modelsErr    error
 	configureErr error
 	configuring  bool
 }
@@ -67,12 +64,6 @@ type integrationsLoadedMsg struct {
 	err   error
 }
 
-// integrationModelsLoadedMsg carries the model catalogue back to the wizard.
-type integrationModelsLoadedMsg struct {
-	models []client.Model
-	err    error
-}
-
 // integrationConfiguredMsg carries the result of configuring the selected harness
 type integrationConfiguredMsg struct {
 	err error
@@ -93,20 +84,6 @@ type integrationState struct {
 
 func newIntegrationState(client *client.Client, config config.Config) integrationState {
 	return integrationState{client: client, config: config}
-}
-
-func newIntegrationWizardState() (integrationWizardState, tea.Cmd) {
-	search := textinput.New()
-	search.Prompt = "Search: "
-	search.Placeholder = "type to filter models"
-	search.CharLimit = 200
-	search.SetWidth(configWidth)
-	focus := search.Focus()
-
-	return integrationWizardState{
-		open:        true,
-		modelSearch: search,
-	}, focus
 }
 
 func (m integrationState) init() tea.Cmd {
@@ -147,16 +124,6 @@ func (m integrationState) refresh() tea.Cmd {
 	return m.load
 }
 
-func (m integrationState) loadModels() tea.Msg {
-	models, err := m.client.Models(context.Background())
-	if err == nil {
-		slices.SortFunc(models, func(a, b client.Model) int {
-			return strings.Compare(a.ID, b.ID)
-		})
-	}
-	return integrationModelsLoadedMsg{models: models, err: err}
-}
-
 func (m integrationState) configure(harness harnesses.Harness, options harnesses.ConfigureOptions) tea.Cmd {
 	return func() tea.Msg {
 		err := harness.Configure(options)
@@ -182,9 +149,18 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 			}
 		}
 
-	case integrationModelsLoadedMsg:
-		m.wizard.models, m.wizard.modelsErr = typedMsg.models, typedMsg.err
-		m.wizard.modelCursor = 0
+	case modelpicker.ChosenMsg:
+		if m.wizard.open && m.wizard.step == integrationModelWizardStep {
+			m.wizard.options.Model = typedMsg.ID
+			m.wizard.step = integrationModeWizardStep
+			m.wizard.modeCursor = 0
+			m.wizard.configureErr = nil
+		}
+
+	case modelpicker.CancelledMsg:
+		if m.wizard.open && m.wizard.step == integrationModelWizardStep {
+			m.wizard = integrationWizardState{}
+		}
 
 	case integrationConfiguredMsg:
 		m.wizard.configuring = false
@@ -211,14 +187,34 @@ func (m integrationState) update(msg tea.Msg) (integrationState, tea.Cmd) {
 			}
 		case "enter":
 			if m.canConfigure() {
-				var focus tea.Cmd
-				m.wizard, focus = newIntegrationWizardState()
-				return m, tea.Batch(m.loadModels, focus)
+				m.wizard = m.newWizard(m.items[m.cursor].harness)
+				return m, m.wizard.picker.Init()
 			}
+		}
+
+	default:
+		// The picker's own messages, such as its lists arriving.
+		if m.wizard.open {
+			var cmd tea.Cmd
+			m.wizard.picker, cmd = m.wizard.picker.Update(msg)
+			return m, cmd
 		}
 	}
 
 	return m, nil
+}
+
+// newWizard opens the wizard on the model picker for harness, listing what
+// this profile can route to.
+func (m integrationState) newWizard(harness harnesses.Harness) integrationWizardState {
+	return integrationWizardState{
+		open: true,
+		picker: modelpicker.New(context.Background(), modelpicker.Options{
+			Client:  m.client,
+			Harness: harness.Name(),
+			Action:  "continue",
+		}),
+	}
 }
 
 func (m integrationState) updateWizard(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
@@ -228,63 +224,14 @@ func (m integrationState) updateWizard(msg tea.KeyPressMsg) (integrationState, t
 
 	switch m.wizard.step {
 	case integrationModelWizardStep:
-		return m.updateModelStep(msg)
+		var cmd tea.Cmd
+		m.wizard.picker, cmd = m.wizard.picker.Update(msg)
+		return m, cmd
 	case integrationModeWizardStep:
 		return m.updateModeStep(msg)
 	default:
 		return m, nil
 	}
-}
-
-func (m integrationState) updateModelStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
-	models := m.wizard.filteredModels()
-
-	switch msg.String() {
-	case "esc":
-		m.wizard = integrationWizardState{}
-	case "up":
-		if m.wizard.modelCursor > 0 {
-			m.wizard.modelCursor--
-		}
-	case "down":
-		if m.wizard.modelCursor < len(models)-1 {
-			m.wizard.modelCursor++
-		}
-	case "enter":
-		if m.wizard.modelsErr == nil &&
-			len(models) > 0 &&
-			m.cursor < len(m.items) {
-			m.wizard.options.Model = models[m.wizard.modelCursor].ID
-			m.wizard.step = integrationModeWizardStep
-			m.wizard.modeCursor = 0
-			m.wizard.configureErr = nil
-		}
-	default:
-		previousQuery := m.wizard.modelSearch.Value()
-		var cmd tea.Cmd
-		m.wizard.modelSearch, cmd = m.wizard.modelSearch.Update(msg)
-		if m.wizard.modelSearch.Value() != previousQuery {
-			m.wizard.modelCursor = 0
-		}
-		return m, cmd
-	}
-
-	return m, nil
-}
-
-func (m integrationWizardState) filteredModels() []client.Model {
-	query := strings.ToLower(strings.TrimSpace(m.modelSearch.Value()))
-	if query == "" {
-		return m.models
-	}
-
-	models := make([]client.Model, 0, len(m.models))
-	for _, model := range m.models {
-		if strings.Contains(strings.ToLower(model.ID), query) {
-			models = append(models, model)
-		}
-	}
-	return models
 }
 
 func (m integrationState) updateModeStep(msg tea.KeyPressMsg) (integrationState, tea.Cmd) {
@@ -450,6 +397,10 @@ func (m integrationState) detail(width int) string {
 }
 
 func (m integrationState) wizardView(width, height int) string {
+	if m.wizard.step == integrationModelWizardStep {
+		return m.wizard.picker.View(width, height)
+	}
+
 	inner := max(min(width-8, 80), 24)
 	page := m.wizardPage(inner)
 	if m.wizard.configuring {
@@ -485,53 +436,11 @@ func (m integrationState) wizardView(width, height int) string {
 }
 
 func (m integrationState) wizardPage(inner int) integrationWizardPage {
-	switch m.wizard.step {
-	case integrationModelWizardStep:
-		return m.modelStepPage(inner)
-	case integrationModeWizardStep:
+	if m.wizard.step == integrationModeWizardStep {
 		return m.modeStepPage(inner)
-	default:
-		return integrationWizardPage{}
-	}
-}
-
-func (m integrationState) modelStepPage(inner int) integrationWizardPage {
-	page := integrationWizardPage{
-		title:      "Choose a Requesty model",
-		enterHint:  "continue",
-		escapeHint: "cancel",
 	}
 
-	search := m.wizard.modelSearch.View()
-	models := m.wizard.filteredModels()
-	var list string
-	switch {
-	case m.wizard.modelsErr != nil:
-		list = theme.Bad.Render(m.wizard.modelsErr.Error())
-	case m.wizard.models == nil:
-		list = theme.Muted.Render("Loading models…")
-	case len(m.wizard.models) == 0:
-		list = theme.Muted.Render("No models available")
-	case len(models) == 0:
-		list = theme.Muted.Render("No models match your search")
-	default:
-		rows := make([][]string, 0, len(models))
-		for _, model := range models {
-			rows = append(rows, []string{model.ID})
-		}
-		list = table.Table{
-			Cols: []table.Column{
-				{Title: "MODEL", Width: inner - 2, Align: table.Left},
-			},
-			Rows:   rows,
-			Cursor: m.wizard.modelCursor,
-			Height: 10,
-			Style:  table.CellStyle(m.wizard.modelCursor),
-		}.Render()
-	}
-	page.body = lipgloss.JoinVertical(lipgloss.Left, search, text.LineSeparator, list)
-
-	return page
+	return integrationWizardPage{}
 }
 
 func (m integrationState) modeStepPage(inner int) integrationWizardPage {
