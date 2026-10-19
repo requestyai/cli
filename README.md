@@ -230,7 +230,8 @@ Requesty apply [automatic prompt caching](https://docs.requesty.ai/features/auto
 those harnesses.
 
 Where a harness supports custom headers, the CLI also sets an `X-Title` header naming the tool, so
-the [Requesty dashboard](https://app.requesty.ai/analytics) can break spend down per harness.
+the [Requesty dashboard](https://app.requesty.ai/analytics) can break spend down per harness, and
+`X-Requesty-Client` and `X-Requesty-Client-Version` headers marking the traffic as set up by the CLI.
 
 DeepSeek Harness needs the models of a custom provider listed in its own settings, so the CLI
 writes the model you selected. You can add more Requesty models later inside the harness, under

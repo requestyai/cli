@@ -115,8 +115,18 @@ func mergeYAMLConfigFileWithOptions(path string, patch map[string]any, options m
 // It rejects nested patches when the existing value is not an object or table.
 func mergePatch(destination, patch map[string]any, path string) error {
 	for key, patchValue := range patch {
-		patchMap, isMap := patchValue.(map[string]any)
-		if !isMap {
+		var patchMap map[string]any
+		switch value := patchValue.(type) {
+		case map[string]any:
+			patchMap = value
+		case map[string]string:
+			// Header maps are typed; they merge into the user's headers like
+			// any other object rather than replacing them.
+			patchMap = make(map[string]any, len(value))
+			for name, v := range value {
+				patchMap[name] = v
+			}
+		default:
 			destination[key] = patchValue
 			continue
 		}

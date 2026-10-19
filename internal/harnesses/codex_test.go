@@ -136,6 +136,18 @@ func TestTomlStringQuotesForCodexOverrides(t *testing.T) {
 	}
 }
 
+func TestCodexHarnessLaunchArgsSendClientHeaders(t *testing.T) {
+	harness := newCodexHarness(config.Config{RouterBaseURL: "https://router.requesty.ai"}, t.TempDir())
+
+	argv := harness.launchArgs(LaunchOptions{})
+
+	assert.Subset(t, argv, []string{
+		"model_providers.requesty.http_headers.X-Title='OpenAI Codex'",
+		"model_providers.requesty.http_headers.X-Requesty-Client='requesty-cli'",
+		"model_providers.requesty.http_headers.X-Requesty-Client-Version='dev'",
+	})
+}
+
 func TestCodexHarnessConfigureMergeDropsConflictingProviderAuth(t *testing.T) {
 	cfg := config.Config{
 		Name:          "work",
@@ -170,7 +182,9 @@ custom_provider_setting = "keep-me"
 		"base_url":                "https://router.requesty.ai/v1",
 		"custom_provider_setting": "keep-me",
 		"http_headers": map[string]any{
-			"X-Title": "OpenAI Codex",
+			"X-Title":                   "OpenAI Codex",
+			"X-Requesty-Client":         "requesty-cli",
+			"X-Requesty-Client-Version": "dev",
 		},
 		"auth": map[string]any{
 			"command": "requesty",

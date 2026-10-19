@@ -16,6 +16,7 @@ import (
 const (
 	openCodeProvider = "requesty"
 	openCodeSchema   = "https://opencode.ai/config.json"
+	openCodeTitle    = "OpenCode"
 )
 
 type openCodeConfig struct {
@@ -168,9 +169,7 @@ func (o *OpenCodeHarness) inlineConfig(existing, model string) (string, error) {
 		"options": map[string]any{
 			"baseURL": o.baseURL(),
 			"apiKey":  "{env:REQUESTY_API_KEY}",
-			"headers": map[string]any{
-				"X-Title": "OpenCode",
-			},
+			"headers": attributionHeaders(openCodeTitle),
 		},
 	}
 	if model != "" {
@@ -255,9 +254,7 @@ func (o *OpenCodeHarness) configureMerge(opts ConfigureOptions) error {
 				"options": map[string]any{
 					"baseURL": o.baseURL(),
 					"apiKey":  o.config.APIKey,
-					"headers": map[string]any{
-						"X-Title": "OpenCode",
-					},
+					"headers": attributionHeaders(openCodeTitle),
 				},
 			},
 		},
@@ -282,9 +279,7 @@ func (o *OpenCodeHarness) configureOverwrite(opts ConfigureOptions) error {
 				Options: openCodeProviderOptions{
 					BaseURL: o.baseURL(),
 					APIKey:  o.config.APIKey,
-					Headers: map[string]string{
-						"X-Title": "OpenCode",
-					},
+					Headers: attributionHeaders(openCodeTitle),
 				},
 			},
 		},

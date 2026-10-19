@@ -4,20 +4,25 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/requestyai/cli/internal/config"
 )
 
+const claudeTitle = "Claude Code"
+
 type claudeSettings struct {
 	Env struct {
-		AnthropicBaseURL   string `json:"ANTHROPIC_BASE_URL"`
-		AnthropicAuthToken string `json:"ANTHROPIC_AUTH_TOKEN"`
-		AnthropicModel     string `json:"ANTHROPIC_MODEL"`
+		AnthropicBaseURL       string `json:"ANTHROPIC_BASE_URL"`
+		AnthropicAuthToken     string `json:"ANTHROPIC_AUTH_TOKEN"`
+		AnthropicModel         string `json:"ANTHROPIC_MODEL"`
+		AnthropicCustomHeaders string `json:"ANTHROPIC_CUSTOM_HEADERS,omitempty"`
 	} `json:"env"`
 }
 
@@ -64,38 +69,34 @@ func (c *ClaudeHarness) Status() (Status, error) {
 		return status, fmt.Errorf("failed to find executable: %w", err)
 	}
 
-	settingsPath := c.settingsPath()
-	status.Files = append(status.Files, settingsPath)
+	status.Files = append(status.Files, c.settingsPath())
 
-	settingsExists, err := pathExists(settingsPath)
+	settings, err := c.readSettings()
 	if err != nil {
-		return status, fmt.Errorf("failed to check file exists: %w", err)
+		return status, err
 	}
-
-	if !settingsExists {
-		status.Configured = false
-		return status, nil
-	}
-
-	settingsBytes, err := os.ReadFile(settingsPath)
-	if errors.Is(err, os.ErrNotExist) {
-		status.Configured = false
-	} else if err != nil {
-		return status, fmt.Errorf("failed to read file: %w", err)
-	}
-
-	var settings claudeSettings
-	if err := json.Unmarshal(settingsBytes, &settings); err != nil {
-		return status, fmt.Errorf("failed to unmarshal: %w", err)
-	}
-
-	if settings.Env.AnthropicBaseURL == c.config.RouterBaseURL {
-		status.Configured = true
-	} else {
-		status.Configured = false
-	}
+	status.Configured = settings.Env.AnthropicBaseURL == c.config.RouterBaseURL
 
 	return status, nil
+}
+
+// readSettings is the user's settings.json, or empty settings when there is
+// none yet.
+func (c *ClaudeHarness) readSettings() (claudeSettings, error) {
+	var settings claudeSettings
+
+	data, err := os.ReadFile(c.settingsPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return settings, nil
+	} else if err != nil {
+		return settings, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	if err := json.Unmarshal(data, &settings); err != nil {
+		return settings, fmt.Errorf("failed to unmarshal: %w", err)
+	}
+
+	return settings, nil
 }
 
 func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
@@ -109,11 +110,17 @@ func (c *ClaudeHarness) Configure(opts ConfigureOptions) error {
 func (c *ClaudeHarness) configureMerge(opts ConfigureOptions) error {
 	settingsPath := c.settingsPath()
 
+	existing, err := c.readSettings()
+	if err != nil {
+		return fmt.Errorf("failed to read settings file: %w", err)
+	}
+
 	settings, err := mergeOrCreateJSONConfigFile(settingsPath, map[string]any{
 		"env": map[string]any{
-			"ANTHROPIC_BASE_URL":   c.config.RouterBaseURL,
-			"ANTHROPIC_AUTH_TOKEN": c.config.APIKey,
-			"ANTHROPIC_MODEL":      opts.Model,
+			"ANTHROPIC_BASE_URL":       c.config.RouterBaseURL,
+			"ANTHROPIC_AUTH_TOKEN":     c.config.APIKey,
+			"ANTHROPIC_MODEL":          opts.Model,
+			"ANTHROPIC_CUSTOM_HEADERS": withHeaderLines(existing.Env.AnthropicCustomHeaders, attributionHeaders(claudeTitle)),
 		},
 	})
 	if err != nil {
@@ -132,6 +139,7 @@ func (c *ClaudeHarness) configureOverwrite(opts ConfigureOptions) error {
 	settings.Env.AnthropicBaseURL = c.config.RouterBaseURL
 	settings.Env.AnthropicAuthToken = c.config.APIKey
 	settings.Env.AnthropicModel = opts.Model
+	settings.Env.AnthropicCustomHeaders = withHeaderLines("", attributionHeaders(claudeTitle))
 
 	if err := backupAndWriteConfigFileAsJSON(c.settingsPath(), &settings); err != nil {
 		return fmt.Errorf("failed to write settings file: %w", err)
@@ -185,24 +193,7 @@ func (c *ClaudeHarness) Launch(opts LaunchOptions) error {
 		return fmt.Errorf("`claude` is not on PATH; install Claude Code (https://code.claude.com/docs/en/setup) and try again")
 	}
 
-	env := parseEnvironmentVariables(opts.Env)
-	env["ANTHROPIC_BASE_URL"] = c.config.RouterBaseURL
-	env["ANTHROPIC_API_KEY"] = c.config.APIKey
-	env["REQUESTY_API_KEY"] = c.config.APIKey
-	delete(env, "ANTHROPIC_AUTH_TOKEN")
-	// The fast-mode check calls an Anthropic-only org endpoint that a gateway
-	// cannot answer; skipping it avoids a startup warning.
-	env["CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK"] = "1"
-	if opts.Model != "" {
-		env["ANTHROPIC_MODEL"] = opts.Model
-	}
-	if opts.FastModel != "" {
-		// The haiku alias covers background work (titles, summaries,
-		// subagents declared as haiku). ANTHROPIC_SMALL_FAST_MODEL is the
-		// name versions before 2.1.2 read; both get the same value.
-		env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = opts.FastModel
-		env["ANTHROPIC_SMALL_FAST_MODEL"] = opts.FastModel
-	}
+	env := c.launchEnv(opts)
 
 	argv := []string{"claude"}
 	if !hasAnyFlag(opts.Args, claudeSettingsFlags) {
@@ -219,6 +210,30 @@ func (c *ClaudeHarness) Launch(opts LaunchOptions) error {
 	}
 
 	return nil
+}
+
+func (c *ClaudeHarness) launchEnv(opts LaunchOptions) map[string]string {
+	env := parseEnvironmentVariables(opts.Env)
+	env["ANTHROPIC_BASE_URL"] = c.config.RouterBaseURL
+	env["ANTHROPIC_API_KEY"] = c.config.APIKey
+	env["REQUESTY_API_KEY"] = c.config.APIKey
+	env["ANTHROPIC_CUSTOM_HEADERS"] = withHeaderLines(env["ANTHROPIC_CUSTOM_HEADERS"], attributionHeaders(claudeTitle))
+	delete(env, "ANTHROPIC_AUTH_TOKEN")
+	// The fast-mode check calls an Anthropic-only org endpoint that a gateway
+	// cannot answer; skipping it avoids a startup warning.
+	env["CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK"] = "1"
+	if opts.Model != "" {
+		env["ANTHROPIC_MODEL"] = opts.Model
+	}
+	if opts.FastModel != "" {
+		// The haiku alias covers background work (titles, summaries,
+		// subagents declared as haiku). ANTHROPIC_SMALL_FAST_MODEL is the
+		// name versions before 2.1.2 read; both get the same value.
+		env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = opts.FastModel
+		env["ANTHROPIC_SMALL_FAST_MODEL"] = opts.FastModel
+	}
+
+	return env
 }
 
 func (c *ClaudeHarness) inlineSettings() (string, error) {
@@ -255,4 +270,34 @@ func hasAnyFlag(args []string, flags []string) bool {
 	}
 
 	return false
+}
+
+// withHeaderLines adds headers to existing, a newline-separated list of
+// `Name: Value` lines as ANTHROPIC_CUSTOM_HEADERS expects. Earlier lines for
+// the same names are replaced; the user's other headers are kept.
+func withHeaderLines(existing string, headers map[string]string) string {
+	replaced := func(name string) bool {
+		for header := range headers {
+			if strings.EqualFold(name, header) {
+				return true
+			}
+		}
+		return false
+	}
+
+	lines := []string{}
+	for _, line := range strings.Split(existing, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		name, _, _ := strings.Cut(line, ":")
+		name = strings.TrimSpace(name)
+		if name == "" || replaced(name) {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	for _, name := range slices.Sorted(maps.Keys(headers)) {
+		lines = append(lines, name+": "+headers[name])
+	}
+
+	return strings.Join(lines, "\n")
 }
