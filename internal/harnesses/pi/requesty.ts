@@ -5,6 +5,7 @@
 //   REQUESTY_API_KEY     the key for this profile
 //   REQUESTY_BASE_URL    the router, without a /v1 suffix
 //   REQUESTY_PI_CATALOG  a JSON file listing the models the profile can use
+//   REQUESTY_PI_HEADERS  a JSON object of the headers to send on every request
 import { readFileSync } from "node:fs";
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
@@ -29,6 +30,15 @@ const loadCatalog = (path: string | undefined): ProviderModelConfig[] => {
 	return Array.isArray(models) ? (models as ProviderModelConfig[]) : [];
 };
 
+// The CLI writes REQUESTY_PI_HEADERS itself, so only the shape is checked.
+const loadHeaders = (json: string | undefined): Record<string, string> => {
+	const parsed: unknown = json === undefined ? {} : JSON.parse(json);
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error("REQUESTY_PI_HEADERS is not a JSON object; start Pi with `requesty pi`.");
+	}
+	return parsed as Record<string, string>;
+};
+
 export default function (pi: ExtensionAPI): void {
 	if (typeof pi.registerProvider !== "function") {
 		throw new Error("Requesty needs pi 0.84.0 or newer; upgrade pi and try again.");
@@ -44,10 +54,7 @@ export default function (pi: ExtensionAPI): void {
 		baseUrl: trimmed(process.env.REQUESTY_BASE_URL) ?? DEFAULT_BASE_URL,
 		api: API,
 		apiKey,
-		headers: {
-			"HTTP-Referer": "https://pi.dev",
-			"X-Title": "Pi",
-		},
+		headers: loadHeaders(trimmed(process.env.REQUESTY_PI_HEADERS)),
 		models: loadCatalog(trimmed(process.env.REQUESTY_PI_CATALOG)),
 	});
 }

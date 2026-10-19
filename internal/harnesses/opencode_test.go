@@ -50,11 +50,35 @@ func TestOpenCodeHarnessRoundTrip(t *testing.T) {
 				"options": {
 					"baseURL": "https://router.requesty.ai/v1",
 					"apiKey": "my-api-key",
-					"headers": {"X-Title": "OpenCode"}
+					"headers": {"X-Title": "OpenCode", "X-Requesty-Client": "requesty-cli", "X-Requesty-Client-Version": "dev"}
 				}
 			}
 		}
 	}`, string(settings))
+}
+
+func TestOpenCodeHarnessInlineConfigKeepsUserHeaders(t *testing.T) {
+	harness := newOpenCodeHarness(config.Config{RouterBaseURL: "https://router.requesty.ai"}, t.TempDir())
+
+	content, err := harness.inlineConfig(`{"provider": {"requesty": {"options": {"headers": {"X-Team": "platform"}}}}}`, "")
+	require.NoError(t, err)
+
+	assert.JSONEq(t, `{
+		"provider": {
+			"requesty": {
+				"options": {
+					"baseURL": "https://router.requesty.ai/v1",
+					"apiKey": "{env:REQUESTY_API_KEY}",
+					"headers": {
+						"X-Team": "platform",
+						"X-Title": "OpenCode",
+						"X-Requesty-Client": "requesty-cli",
+						"X-Requesty-Client-Version": "dev"
+					}
+				}
+			}
+		}
+	}`, content)
 }
 
 func TestOpenCodeHarnessConfigureCreatesMissingConfig(t *testing.T) {
@@ -80,7 +104,7 @@ func TestOpenCodeHarnessConfigureCreatesMissingConfig(t *testing.T) {
 				"options": {
 					"baseURL": "https://router.requesty.ai/v1",
 					"apiKey": "my-api-key",
-					"headers": {"X-Title": "OpenCode"}
+					"headers": {"X-Title": "OpenCode", "X-Requesty-Client": "requesty-cli", "X-Requesty-Client-Version": "dev"}
 				}
 			}
 		}

@@ -3,9 +3,11 @@ package harnesses
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -15,6 +17,7 @@ import (
 
 const (
 	codexModelProvider = "requesty"
+	codexTitle         = "OpenAI Codex"
 )
 
 // codexProviderAuthConflicts are provider keys Codex refuses alongside
@@ -142,11 +145,9 @@ func (c *CodexHarness) configureMerge(opts ConfigureOptions) error {
 		"personality":                        "pragmatic",
 		"model_providers": map[string]any{
 			codexModelProvider: map[string]any{
-				"name":     "Requesty",
-				"base_url": fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
-				"http_headers": map[string]any{
-					"X-Title": "OpenAI Codex",
-				},
+				"name":         "Requesty",
+				"base_url":     fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
+				"http_headers": attributionHeaders(codexTitle),
 				"auth": map[string]any{
 					"command": "requesty",
 					"args":    c.authArgs(),
@@ -180,11 +181,9 @@ func (c *CodexHarness) configureOverwrite(opts ConfigureOptions) error {
 		ModelProvider: codexModelProvider,
 		ModelProviders: map[string]codexProvider{
 			codexModelProvider: {
-				Name:    "Requesty",
-				BaseURL: fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
-				HTTPHeaders: map[string]string{
-					"X-Title": "OpenAI Codex",
-				},
+				Name:        "Requesty",
+				BaseURL:     fmt.Sprintf("%s/v1", c.config.RouterBaseURL),
+				HTTPHeaders: attributionHeaders(codexTitle),
 				Auth: codexProviderAuth{
 					Command: "requesty",
 					Args:    c.authArgs(),
@@ -225,21 +224,7 @@ func (c *CodexHarness) Launch(opts LaunchOptions) error {
 		return fmt.Errorf("`codex` is not on PATH; install Codex (https://developers.openai.com/codex/cli) and try again")
 	}
 
-	provider := "model_providers." + codexModelProvider
-	argv := []string{
-		"codex",
-		"-c", "model_provider=" + tomlString(codexModelProvider),
-		"-c", provider + ".name=" + tomlString("Requesty"),
-		"-c", provider + ".base_url=" + tomlString(c.config.RouterBaseURL+"/v1"),
-		"-c", provider + ".http_headers.X-Title=" + tomlString("OpenAI Codex"),
-		"-c", provider + ".auth.command=" + tomlString(requestyExecutable()),
-		"-c", provider + ".auth.args=[" + tomlString("auth") + "," + tomlString("token") + "," + tomlString("--profile") + "," + tomlString(c.config.Name) + "]",
-		"-c", "model_supports_reasoning_summaries=false",
-	}
-	if opts.Model != "" {
-		argv = append(argv, "-m", opts.Model)
-	}
-	argv = append(argv, opts.Args...)
+	argv := c.launchArgs(opts)
 
 	env := opts.Env
 	if env == nil {
@@ -251,6 +236,30 @@ func (c *CodexHarness) Launch(opts LaunchOptions) error {
 	}
 
 	return nil
+}
+
+func (c *CodexHarness) launchArgs(opts LaunchOptions) []string {
+	provider := "model_providers." + codexModelProvider
+	argv := []string{
+		"codex",
+		"-c", "model_provider=" + tomlString(codexModelProvider),
+		"-c", provider + ".name=" + tomlString("Requesty"),
+		"-c", provider + ".base_url=" + tomlString(c.config.RouterBaseURL+"/v1"),
+	}
+	headers := attributionHeaders(codexTitle)
+	for _, name := range slices.Sorted(maps.Keys(headers)) {
+		argv = append(argv, "-c", provider+".http_headers."+name+"="+tomlString(headers[name]))
+	}
+	argv = append(argv,
+		"-c", provider+".auth.command="+tomlString(requestyExecutable()),
+		"-c", provider+".auth.args=["+tomlString("auth")+","+tomlString("token")+","+tomlString("--profile")+","+tomlString(c.config.Name)+"]",
+		"-c", "model_supports_reasoning_summaries=false",
+	)
+	if opts.Model != "" {
+		argv = append(argv, "-m", opts.Model)
+	}
+
+	return append(argv, opts.Args...)
 }
 
 // tomlString quotes s as a TOML string for a Codex -c override. Codex parses

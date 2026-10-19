@@ -24,6 +24,8 @@ const (
 
 	deepseekContextWindow = 200000
 	deepseekMaxTokens     = 8192
+
+	deepseekTitle = "DeepSeek Harness"
 )
 
 type deepseekSettings struct {
@@ -193,11 +195,8 @@ func (d *DeepSeekHarness) configureMerge(opts ConfigureOptions) error {
 					"baseURL":              d.routerBaseURL(),
 					"defaultContextWindow": deepseekContextWindow,
 					"defaultMaxTokens":     deepseekMaxTokens,
-					"headers": map[string]any{
-						"HTTP-Referer": "https://requesty.ai",
-						"X-Title":      "DeepSeek Harness",
-					},
-					"models": models,
+					"headers":              attributionHeaders(deepseekTitle),
+					"models":               models,
 				},
 			},
 		},
@@ -232,10 +231,7 @@ func (d *DeepSeekHarness) configureOverwrite(opts ConfigureOptions) error {
 					BaseURL:              d.routerBaseURL(),
 					DefaultContextWindow: deepseekContextWindow,
 					DefaultMaxTokens:     deepseekMaxTokens,
-					Headers: map[string]string{
-						"HTTP-Referer": "https://requesty.ai",
-						"X-Title":      "DeepSeek Harness",
-					},
+					Headers:              attributionHeaders(deepseekTitle),
 					Models: []deepseekModelConfig{
 						{ID: opts.Model},
 					},

@@ -19,6 +19,7 @@ import (
 
 const (
 	piProvider             = "requesty"
+	piTitle                = "Pi"
 	piDefaultThinkingLevel = "medium"
 
 	// piAPI is the native Anthropic Messages format, which lets Requesty apply
@@ -256,13 +257,10 @@ func (p *PiHarness) Launch(opts LaunchOptions) error {
 		return fmt.Errorf("failed to write Pi model catalog: %w", err)
 	}
 
-	env := parseEnvironmentVariables(opts.Env)
-	for _, key := range piNeutralizedEnv {
-		delete(env, key)
+	env, err := p.launchEnv(opts, catalogPath)
+	if err != nil {
+		return err
 	}
-	env["REQUESTY_API_KEY"] = p.config.APIKey
-	env["REQUESTY_BASE_URL"] = p.config.RouterBaseURL
-	env["REQUESTY_PI_CATALOG"] = catalogPath
 
 	argv := []string{"pi", "--extension", extensionPath}
 	switch {
@@ -399,10 +397,7 @@ func (p *PiHarness) configureMerge(opts ConfigureOptions) error {
 				"baseUrl": p.config.RouterBaseURL,
 				"api":     piAPI,
 				"apiKey":  p.config.APIKey,
-				"headers": map[string]any{
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title":      "Pi",
-				},
+				"headers": attributionHeaders(piTitle),
 				"models": []any{
 					piModelConfigFrom(opts),
 				},
@@ -442,10 +437,7 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 				BaseURL: p.config.RouterBaseURL,
 				API:     piAPI,
 				APIKey:  p.config.APIKey,
-				Headers: map[string]string{
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title":      "Pi",
-				},
+				Headers: attributionHeaders(piTitle),
 				Models: []piModelConfig{
 					piModelConfigFrom(opts),
 				},
@@ -484,6 +476,24 @@ func piModelConfigFrom(opts ConfigureOptions) piModelConfig {
 		ContextWindow: entry.ContextWindow,
 		MaxTokens:     entry.MaxTokens,
 	}
+}
+
+func (p *PiHarness) launchEnv(opts LaunchOptions, catalogPath string) (map[string]string, error) {
+	headers, err := json.Marshal(attributionHeaders(piTitle))
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode Pi headers: %w", err)
+	}
+
+	env := parseEnvironmentVariables(opts.Env)
+	for _, key := range piNeutralizedEnv {
+		delete(env, key)
+	}
+	env["REQUESTY_API_KEY"] = p.config.APIKey
+	env["REQUESTY_BASE_URL"] = p.config.RouterBaseURL
+	env["REQUESTY_PI_CATALOG"] = catalogPath
+	env["REQUESTY_PI_HEADERS"] = string(headers)
+
+	return env, nil
 }
 
 func (p *PiHarness) modelsPath() string {

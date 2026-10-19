@@ -61,8 +61,9 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 				"api": "anthropic-messages",
 				"apiKey": "my-api-key",
 				"headers": {
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title": "Pi"
+					"X-Title": "Pi",
+					"X-Requesty-Client": "requesty-cli",
+					"X-Requesty-Client-Version": "dev"
 				},
 				"models": [
 					{"id": "anthropic/claude-fable-5", "contextWindow": 1000000, "maxTokens": 64000}
@@ -79,6 +80,19 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 		"defaultModel": "anthropic/claude-fable-5",
 		"defaultThinkingLevel": "medium"
 	}`, string(settings))
+}
+
+func TestPiHarnessLaunchEnvPassesHeaders(t *testing.T) {
+	harness := newPiHarness(config.Config{RouterBaseURL: "https://router.requesty.ai"}, t.TempDir())
+
+	env, err := harness.launchEnv(LaunchOptions{Env: []string{}}, "/tmp/catalog.json")
+	require.NoError(t, err)
+
+	assert.JSONEq(t, `{
+		"X-Title": "Pi",
+		"X-Requesty-Client": "requesty-cli",
+		"X-Requesty-Client-Version": "dev"
+	}`, env["REQUESTY_PI_HEADERS"])
 }
 
 func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
@@ -105,8 +119,9 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 				"api": "anthropic-messages",
 				"apiKey": "my-api-key",
 				"headers": {
-					"HTTP-Referer": "https://pi.dev",
-					"X-Title": "Pi"
+					"X-Title": "Pi",
+					"X-Requesty-Client": "requesty-cli",
+					"X-Requesty-Client-Version": "dev"
 				},
 				"models": [
 					{"id": "anthropic/claude-fable-5", "contextWindow": 200000, "maxTokens": 8192}

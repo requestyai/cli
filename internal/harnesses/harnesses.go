@@ -1,8 +1,40 @@
 package harnesses
 
 import (
+	"strings"
+
 	"github.com/requestyai/cli/internal/config"
+	"github.com/requestyai/cli/internal/version"
 )
+
+// Every request from a harness the CLI set up or launched carries two pieces
+// of attribution: which harness it came from, and that the Requesty CLI put
+// it there. The router stores both, so the dashboard can break spend down per
+// harness and tell CLI traffic apart from harnesses configured by hand.
+const (
+	// harnessTitleHeader names the harness, in the X-Title convention the
+	// harnesses themselves use.
+	harnessTitleHeader = "X-Title"
+
+	requestyClientHeader        = "X-Requesty-Client"
+	requestyClientVersionHeader = "X-Requesty-Client-Version"
+	requestyClientName          = "requesty-cli"
+)
+
+func requestyClientVersion() string {
+	return strings.TrimPrefix(version.Version, "v")
+}
+
+// attributionHeaders are the headers a harness sends on every request so the
+// router can attribute it: title names the harness, and the client headers
+// say the Requesty CLI configured or launched it.
+func attributionHeaders(title string) map[string]string {
+	return map[string]string{
+		harnessTitleHeader:          title,
+		requestyClientHeader:        requestyClientName,
+		requestyClientVersionHeader: requestyClientVersion(),
+	}
+}
 
 type Status struct {
 	Files      []string
