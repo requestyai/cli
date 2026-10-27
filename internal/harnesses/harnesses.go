@@ -13,8 +13,12 @@ type Status struct {
 }
 
 type ConfigureOptions struct {
-	Model     string
-	Overwrite bool
+	Model string
+	// ContextWindow and MaxOutputTokens are what the model list reports for
+	// Model, zero when it does not say.
+	ContextWindow   int
+	MaxOutputTokens int
+	Overwrite       bool
 }
 
 type LaunchOptions struct {

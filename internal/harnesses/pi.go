@@ -46,7 +46,9 @@ type piProviderConfig struct {
 }
 
 type piModelConfig struct {
-	ID string `json:"id"`
+	ID            string `json:"id"`
+	ContextWindow int    `json:"contextWindow"`
+	MaxTokens     int    `json:"maxTokens"`
 }
 
 type PiHarness struct {
@@ -402,7 +404,7 @@ func (p *PiHarness) configureMerge(opts ConfigureOptions) error {
 					"X-Title":      "Pi",
 				},
 				"models": []any{
-					map[string]any{"id": opts.Model},
+					piModelConfigFrom(opts),
 				},
 			},
 		},
@@ -445,7 +447,7 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 					"X-Title":      "Pi",
 				},
 				Models: []piModelConfig{
-					{ID: opts.Model},
+					piModelConfigFrom(opts),
 				},
 			},
 		},
@@ -466,6 +468,22 @@ func (p *PiHarness) configureOverwrite(opts ConfigureOptions) error {
 	}
 
 	return nil
+}
+
+// piModelConfigFrom describes the configured model with its capacities, since
+// Pi caps a model without them at 128k tokens.
+func piModelConfigFrom(opts ConfigureOptions) piModelConfig {
+	entry := piCatalogModelFrom(client.Model{
+		ID:              opts.Model,
+		ContextWindow:   opts.ContextWindow,
+		MaxOutputTokens: opts.MaxOutputTokens,
+	})
+
+	return piModelConfig{
+		ID:            entry.ID,
+		ContextWindow: entry.ContextWindow,
+		MaxTokens:     entry.MaxTokens,
+	}
 }
 
 func (p *PiHarness) modelsPath() string {

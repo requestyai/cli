@@ -42,7 +42,7 @@ func newIntegrationTestState(t *testing.T) (integrationState, *fakeHarness) {
 		if r.URL.Path == "/v1/models/managed" {
 			id = "claude-sonnet-4-6"
 		}
-		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": []client.Model{{ID: id}}}))
+		require.NoError(t, json.NewEncoder(w).Encode(map[string]any{"data": []client.Model{{ID: id, ContextWindow: 1_000_000, MaxOutputTokens: 64_000}}}))
 	}))
 	t.Cleanup(server.Close)
 
@@ -133,7 +133,7 @@ func TestConfigureWithAManagedPolicy(t *testing.T) {
 
 	m = run(m, key("enter"))
 
-	assert.Equal(t, []harnesses.ConfigureOptions{{Model: "claude-sonnet-4-6"}}, harness.configured)
+	assert.Equal(t, []harnesses.ConfigureOptions{{Model: "claude-sonnet-4-6", ContextWindow: 1_000_000, MaxOutputTokens: 64_000}}, harness.configured)
 	assert.False(t, m.wizard.open)
 }
 
@@ -145,7 +145,7 @@ func TestConfigureWithAModelFromTheModelsTab(t *testing.T) {
 	m = run(m, key("enter"))
 	m = run(m, key("enter"))
 
-	assert.Equal(t, []harnesses.ConfigureOptions{{Model: "anthropic/claude-sonnet-4-6"}}, harness.configured)
+	assert.Equal(t, []harnesses.ConfigureOptions{{Model: "anthropic/claude-sonnet-4-6", ContextWindow: 1_000_000, MaxOutputTokens: 64_000}}, harness.configured)
 }
 
 func TestEscapeFromModeStepReturnsToThePicker(t *testing.T) {
