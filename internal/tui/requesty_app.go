@@ -35,9 +35,7 @@ func (a RequestyApp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		switch typedMsg.String() {
-		case "q":
-			return a, tea.Quit
-		case "esc":
+		case "q", "esc":
 			if !a.dashboard.ModalOpen() {
 				return a, tea.Quit
 			}

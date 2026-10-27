@@ -74,20 +74,19 @@ func key(name string) tea.KeyPressMsg {
 	}
 }
 
-func update(m model, msg tea.Msg) (model, tea.Cmd) {
-	next, cmd := m.Update(msg)
-	return next.(model), cmd
+func update(m Picker, msg tea.Msg) (Picker, tea.Cmd) {
+	return m.Update(msg)
 }
 
-func view(m model) string {
-	return ansi.Strip(m.View().Content)
+func view(m Picker) string {
+	return ansi.Strip(m.View(defaultWidth, defaultHeight))
 }
 
 // loaded runs the picker's own load commands so both tabs are filled in.
-func loaded(t *testing.T, l lists, preferred ...string) model {
+func loaded(t *testing.T, l lists, preferred ...string) Picker {
 	t.Helper()
 
-	m := newModel(context.Background(), Options{Client: newClient(t, l), Harness: "Claude Code", Preferred: preferred})
+	m := New(context.Background(), Options{Client: newClient(t, l), Harness: "Claude Code", Preferred: preferred})
 	for _, tab := range []tab{tabPolicies, tabModels} {
 		msg := m.load(tab)()
 		require.IsType(t, loadedMsg{}, msg)
@@ -161,10 +160,38 @@ func TestEnterChoosesTheModelUnderTheCursor(t *testing.T) {
 	m := loaded(t, lists{policies: policies, models: models})
 
 	m, _ = update(m, key("down"))
-	m, cmd := update(m, key("enter"))
+	_, cmd := update(m, key("enter"))
 
-	assert.Equal(t, "claude-sonnet-4-6", m.chosen)
-	assert.NotNil(t, cmd, "enter quits the program")
+	require.NotNil(t, cmd)
+	assert.Equal(t, "claude-sonnet-4-6", cmd().(ChosenMsg).Model.ID)
+}
+
+func TestFooterNamesTheAction(t *testing.T) {
+	m := loaded(t, lists{policies: policies, models: models})
+	assert.Contains(t, view(m), "enter launch")
+
+	m.opts.Action = "continue"
+	assert.Contains(t, view(m), "enter continue")
+}
+
+func TestProgramQuitsWithTheChosenModel(t *testing.T) {
+	p := newProgram(context.Background(), Options{Client: newClient(t, lists{policies: policies, models: models})})
+
+	next, cmd := p.Update(ChosenMsg{Model: client.Model{ID: "gpt-5.5"}})
+
+	assert.Equal(t, "gpt-5.5", next.(program).chosen)
+	require.NotNil(t, cmd)
+	assert.Equal(t, tea.QuitMsg{}, cmd())
+}
+
+func TestProgramQuitsWithNothingChosenOnCancel(t *testing.T) {
+	p := newProgram(context.Background(), Options{Client: newClient(t, lists{policies: policies, models: models})})
+
+	next, cmd := p.Update(CancelledMsg{})
+
+	assert.Empty(t, next.(program).chosen)
+	require.NotNil(t, cmd)
+	assert.Equal(t, tea.QuitMsg{}, cmd())
 }
 
 func TestTabSwitchesToModelsAndBack(t *testing.T) {
@@ -218,7 +245,7 @@ func TestLoadErrorMovesToModelsAndIsShownOnItsTab(t *testing.T) {
 }
 
 func TestLoadingStateBeforeListsArrive(t *testing.T) {
-	m := newModel(context.Background(), Options{Client: newClient(t, lists{}), Harness: "Codex"})
+	m := New(context.Background(), Options{Client: newClient(t, lists{}), Harness: "Codex"})
 
 	assert.Contains(t, view(m), "Loading policies…")
 
@@ -229,10 +256,10 @@ func TestLoadingStateBeforeListsArrive(t *testing.T) {
 func TestEscapeLeavesNothingChosen(t *testing.T) {
 	m := loaded(t, lists{policies: policies, models: models})
 
-	m, cmd := update(m, key("esc"))
+	_, cmd := update(m, key("esc"))
 
-	assert.Empty(t, m.chosen)
-	assert.NotNil(t, cmd)
+	require.NotNil(t, cmd)
+	assert.Equal(t, CancelledMsg{}, cmd())
 }
 
 func TestCursorStaysWithinTheList(t *testing.T) {
