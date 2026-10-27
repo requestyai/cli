@@ -163,7 +163,7 @@ func TestEnterChoosesTheModelUnderTheCursor(t *testing.T) {
 	_, cmd := update(m, key("enter"))
 
 	require.NotNil(t, cmd)
-	assert.Equal(t, ChosenMsg{ID: "claude-sonnet-4-6"}, cmd())
+	assert.Equal(t, "claude-sonnet-4-6", cmd().(ChosenMsg).Model.ID)
 }
 
 func TestFooterNamesTheAction(t *testing.T) {
@@ -177,7 +177,7 @@ func TestFooterNamesTheAction(t *testing.T) {
 func TestProgramQuitsWithTheChosenModel(t *testing.T) {
 	p := newProgram(context.Background(), Options{Client: newClient(t, lists{policies: policies, models: models})})
 
-	next, cmd := p.Update(ChosenMsg{ID: "gpt-5.5"})
+	next, cmd := p.Update(ChosenMsg{Model: client.Model{ID: "gpt-5.5"}})
 
 	assert.Equal(t, "gpt-5.5", next.(program).chosen)
 	require.NotNil(t, cmd)

@@ -39,7 +39,9 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 
 	// Configure the machine.
 	err = harness.Configure(ConfigureOptions{
-		Model: "anthropic/claude-fable-5",
+		Model:           "anthropic/claude-fable-5",
+		ContextWindow:   1_000_000,
+		MaxOutputTokens: 64_000,
 	})
 	require.NoError(t, err)
 
@@ -63,7 +65,7 @@ func TestPiHarnessRoundTrip(t *testing.T) {
 					"X-Title": "Pi"
 				},
 				"models": [
-					{"id": "anthropic/claude-fable-5"}
+					{"id": "anthropic/claude-fable-5", "contextWindow": 1000000, "maxTokens": 64000}
 				]
 			}
 		}
@@ -107,7 +109,7 @@ func TestPiHarnessConfigureCreatesMissingConfig(t *testing.T) {
 					"X-Title": "Pi"
 				},
 				"models": [
-					{"id": "anthropic/claude-fable-5"}
+					{"id": "anthropic/claude-fable-5", "contextWindow": 200000, "maxTokens": 8192}
 				]
 			}
 		}

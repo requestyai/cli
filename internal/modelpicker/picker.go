@@ -45,7 +45,7 @@ type Options struct {
 
 // ChosenMsg reports that a model was chosen in a Picker.
 type ChosenMsg struct {
-	ID string
+	Model client.Model
 }
 
 // CancelledMsg reports that a Picker was closed without choosing.
@@ -138,7 +138,7 @@ func (p program) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.height = max(typedMsg.Height-2*framePadY, 0)
 		return p, nil
 	case ChosenMsg:
-		p.chosen = typedMsg.ID
+		p.chosen = typedMsg.Model.ID
 		return p, tea.Quit
 	case CancelledMsg:
 		return p, tea.Quit
@@ -285,8 +285,8 @@ func (m Picker) updateKey(msg tea.KeyPressMsg) (Picker, tea.Cmd) {
 		}
 	case "enter":
 		if filtered := m.filtered(); len(filtered) > 0 {
-			chosen := filtered[m.cursor].ID
-			return m, func() tea.Msg { return ChosenMsg{ID: chosen} }
+			chosen := filtered[m.cursor]
+			return m, func() tea.Msg { return ChosenMsg{Model: chosen} }
 		}
 	default:
 		previous := m.search.Value()
